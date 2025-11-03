@@ -1,9 +1,5 @@
 import React from 'react';
 
-/**
- * VisualizationPanel Component
- * Displays the current execution state and variables
- */
 const VisualizationPanel = ({ currentStep, stepData }) => {
   if (!stepData) {
     return (
@@ -20,31 +16,41 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
     );
   }
 
-  const { lineContent, description, variables, type, variable, value } = stepData;
+  const { lineContent, description, variables, type, variable, value, consoleOutput, callStack } = stepData;
   const variableEntries = Object.entries(variables);
 
+  // Get step color based on type
+  const getStepColor = () => {
+    switch (type) {
+      case 'error': return 'bg-red-900 border-red-500';
+      case 'start': return 'bg-blue-900 border-blue-500';
+      case 'end': return 'bg-green-900 border-green-500';
+      case 'function-call': return 'bg-indigo-900 border-indigo-500';
+      case 'function-return': return 'bg-teal-900 border-teal-500';
+      case 'condition': return 'bg-yellow-900 border-yellow-500';
+      case 'loop': return 'bg-orange-900 border-orange-500';
+      case 'console': return 'bg-cyan-900 border-cyan-500';
+      default: return 'bg-purple-900 border-purple-500';
+    }
+  };
+
   return (
-    <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden">
+    <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden h-full">
       {/* Header */}
       <div className="bg-slate-900 px-4 py-2 border-b border-slate-700">
         <h2 className="text-lg font-semibold text-white">Visualization</h2>
       </div>
 
-      <div className="p-6 space-y-4">
+      <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
         {/* Current Step Info */}
-        <div className={`rounded-lg p-4 border-2 ${
-          type === 'error' ? 'bg-red-900 border-red-500' :
-          type === 'start' ? 'bg-blue-900 border-blue-500' :
-          type === 'end' ? 'bg-green-900 border-green-500' :
-          'bg-purple-900 border-purple-500'
-        }`}>
+        <div className={`rounded-lg p-4 border-2 ${getStepColor()}`}>
           <div className="text-sm text-slate-300 mb-1">
             Step {currentStep}
           </div>
           <div className="text-white font-semibold text-lg mb-2">
             {description}
           </div>
-          {lineContent && lineContent !== 'Program Start' && lineContent !== 'Program End' && (
+          {lineContent && lineContent !== 'Program Start' && lineContent !== 'Program End' && !lineContent.startsWith('Line') && (
             <div className="bg-slate-900 rounded p-2 mt-2">
               <code className="text-green-400 text-sm font-mono">
                 {lineContent}
@@ -53,17 +59,51 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
           )}
         </div>
 
+        {/* Call Stack */}
+        {callStack && callStack.length > 0 && (
+          <div className="bg-slate-900 rounded-lg p-4 border border-indigo-500">
+            <h3 className="text-lg font-semibold text-indigo-300 mb-2 flex items-center gap-2">
+              <span>📚</span> Call Stack
+            </h3>
+            <div className="space-y-1">
+              {callStack.map((func, idx) => (
+                <div key={idx} className="bg-indigo-900 rounded p-2 text-indigo-200 font-mono text-sm">
+                  {idx + 1}. {func}()
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Console Output */}
+        {consoleOutput && consoleOutput.length > 0 && (
+          <div className="bg-slate-900 rounded-lg p-4 border border-cyan-500">
+            <h3 className="text-lg font-semibold text-cyan-300 mb-2 flex items-center gap-2">
+              <span>💬</span> Console Output
+            </h3>
+            <div className="bg-black rounded p-3 font-mono text-sm text-green-400 max-h-32 overflow-y-auto">
+              {consoleOutput.map((output, idx) => (
+                <div key={idx} className="mb-1">
+                  &gt; {output}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Variables Section */}
         <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-purple-300">Variables</h3>
+            <h3 className="text-lg font-semibold text-purple-300 flex items-center gap-2">
+              <span>📦</span> Variables
+            </h3>
             <span className="text-sm text-slate-400">
               {variableEntries.length} variable{variableEntries.length !== 1 ? 's' : ''}
             </span>
           </div>
 
           {variableEntries.length === 0 ? (
-            <div className="text-slate-400 italic text-center py-8">
+            <div className="text-slate-400 italic text-center py-4">
               No variables yet
             </div>
           ) : (
@@ -97,7 +137,7 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-yellow-300 font-mono font-semibold break-all">
+                        <div className="text-yellow-300 font-mono font-semibold break-all max-w-xs">
                           {formatValue(val)}
                         </div>
                       </div>
@@ -109,10 +149,12 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
           )}
         </div>
 
-        {/* Visual Representation for Arrays */}
+        {/* Array Visualization */}
         {variableEntries.some(([, val]) => Array.isArray(val)) && (
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
-            <h3 className="text-lg font-semibold text-purple-300 mb-3">Array Visualization</h3>
+            <h3 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
+              <span>📊</span> Array Visualization
+            </h3>
             <div className="space-y-3">
               {variableEntries
                 .filter(([, val]) => Array.isArray(val))
@@ -126,7 +168,7 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
                           className="bg-slate-800 border border-purple-500 rounded p-2 min-w-[60px] text-center"
                         >
                           <div className="text-xs text-slate-400 mb-1">[{idx}]</div>
-                          <div className="text-yellow-300 font-mono font-semibold">
+                          <div className="text-yellow-300 font-mono font-semibold text-sm">
                             {formatValue(item)}
                           </div>
                         </div>
@@ -142,18 +184,31 @@ const VisualizationPanel = ({ currentStep, stepData }) => {
   );
 };
 
-// Helper function to get value type
+// Helper functions
 const getValueType = (value) => {
   if (Array.isArray(value)) return 'Array';
   if (value === null) return 'null';
+  if (typeof value === 'object') return 'Object';
   return typeof value;
 };
 
-// Helper function to format values for display
 const formatValue = (value) => {
   if (typeof value === 'string') return `"${value}"`;
-  if (Array.isArray(value)) return `[${value.map(v => formatValue(v)).join(', ')}]`;
-  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    if (value.length > 5) {
+      return `[${value.slice(0, 5).map(v => formatValue(v)).join(', ')}, ...]`;
+    }
+    return `[${value.map(v => formatValue(v)).join(', ')}]`;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value);
+    if (entries.length > 3) {
+      return `{${entries.slice(0, 3).map(([k, v]) => `${k}: ${formatValue(v)}`).join(', ')}, ...}`;
+    }
+    return JSON.stringify(value);
+  }
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
   return String(value);
 };
 

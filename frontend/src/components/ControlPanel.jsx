@@ -16,9 +16,6 @@ const ControlPanel = ({
   currentStep,
   totalSteps
 }) => {
-  console.log(currentStep)
-  console.log(isRunning)
-  console.log(canGoNext)
   return (
     <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-4">
       {/* Step Counter */}

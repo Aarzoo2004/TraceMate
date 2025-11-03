@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import CodeEditor from './components/CodeEditor';
-import ControlPanel from './components/ControlPanel';
-import VisualizationPanel from './components/VisualizationPanel';
-import CodeInterpreter from './utils/interpreter';
+import React, { useState, useRef, useEffect } from "react";
+import CodeEditor from "./components/CodeEditor";
+import ControlPanel from "./components/ControlPanel";
+import VisualizationPanel from "./components/VisualizationPanel";
+import CodeInterpreter from "./utils/interpreter";
+import ExamplesPanel from "./components/ExamplesPanel";
 
 function App() {
   // Sample code to start with
@@ -13,7 +14,7 @@ function App() {
   const [executionSteps, setExecutionSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   // Ref for auto-run interval
   const runIntervalRef = useRef(null);
@@ -23,7 +24,7 @@ function App() {
 
   // Handle code execution
   const executeCode = () => {
-    setError('');
+    setError("");
     const result = interpreterRef.current.execute(code);
 
     if (result.success) {
@@ -44,7 +45,7 @@ function App() {
       executeCode();
       return;
     }
-    
+
     if (currentStep < executionSteps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -60,50 +61,35 @@ function App() {
     if (executionSteps.length === 0) {
       if (!executeCode()) return;
     }
-    
-    setIsRunning(true);
-    // setCurrentStep(0);
 
-    // let step = 0;
-    // runIntervalRef.current = setInterval(() => {
-    // console.log(currentStep)
-    // console.log(`length : ${executionSteps.length}`)
-    //   step++;
-    //   if (step >= executionSteps.length) {
-    //     clearInterval(runIntervalRef.current);
-    //     setIsRunning(false);
-    //     setCurrentStep(executionSteps.length - 1);
-    //   } else {
-    //     setCurrentStep(step);
-    //   }
-    // }, 1000); // 1 second delay between steps
+    setIsRunning(true);
   };
 
   useEffect(() => {
-    if(!isRunning){
-      return 
+    if (!isRunning) {
+      return;
     }
-    if (executionSteps.length === 0){
+    if (executionSteps.length === 0) {
       // Steps not ready yet - wait for them
-      return
+      return;
     }
     // Start play
-    let step = 0
-    setCurrentStep(0)
+    let step = 0;
+    setCurrentStep(0);
 
     runIntervalRef.current = setInterval(() => {
-      step++
-      if (step >= executionSteps.length){
-        clearInterval(runIntervalRef.current)
-        setIsRunning(false)
-        setCurrentStep(executionSteps.length - 1)
+      step++;
+      if (step >= executionSteps.length) {
+        clearInterval(runIntervalRef.current);
+        setIsRunning(false);
+        setCurrentStep(executionSteps.length - 1);
       } else {
-        setCurrentStep(step)
+        setCurrentStep(step);
       }
-    }, 1000)
+    }, 1000);
 
-    return () => clearInterval(runIntervalRef.current)
-  },[isRunning, executionSteps])
+    return () => clearInterval(runIntervalRef.current);
+  }, [isRunning, executionSteps]);
 
   const handleReset = () => {
     if (runIntervalRef.current) {
@@ -112,7 +98,7 @@ function App() {
     setIsRunning(false);
     setCurrentStep(0);
     setExecutionSteps([]);
-    setError('');
+    setError("");
   };
 
   // Cleanup interval on unmount
@@ -154,6 +140,13 @@ function App() {
           </div>
         )}
 
+        <ExamplesPanel
+          onSelectExample={(exampleCode) => {
+            setCode(exampleCode);
+            handleReset();
+          }}
+        />
+
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Code Editor (takes 2 columns on large screens) */}
@@ -174,7 +167,9 @@ function App() {
               canGoPrevious={currentStep > 0}
               canGoNext={currentStep < executionSteps.length - 1}
               currentStep={currentStep}
-              totalSteps={executionSteps.length > 0 ? executionSteps.length - 1 : 0}
+              totalSteps={
+                executionSteps.length > 0 ? executionSteps.length - 1 : 0
+              }
             />
           </div>
 
@@ -189,34 +184,48 @@ function App() {
 
         {/* Instructions Footer */}
         <div className="mt-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-6">
-          <h3 className="text-xl font-semibold text-white mb-4">How to Use 📚</h3>
+          <h3 className="text-xl font-semibold text-white mb-4">
+            How to Use 📚
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-300">
             <div className="flex gap-3">
               <span className="text-2xl">1️⃣</span>
               <div>
                 <div className="font-semibold text-purple-300">Write Code</div>
-                <div className="text-sm">Type JavaScript code in the editor (supports let, const, var)</div>
+                <div className="text-sm">
+                  Type JavaScript code in the editor (supports let, const, var)
+                </div>
               </div>
             </div>
             <div className="flex gap-3">
               <span className="text-2xl">2️⃣</span>
               <div>
-                <div className="font-semibold text-purple-300">Step Through</div>
-                <div className="text-sm">Use Next/Previous to navigate line by line</div>
+                <div className="font-semibold text-purple-300">
+                  Step Through
+                </div>
+                <div className="text-sm">
+                  Use Next/Previous to navigate line by line
+                </div>
               </div>
             </div>
             <div className="flex gap-3">
               <span className="text-2xl">3️⃣</span>
               <div>
                 <div className="font-semibold text-purple-300">Auto Run</div>
-                <div className="text-sm">Click Run to automatically execute all steps</div>
+                <div className="text-sm">
+                  Click Run to automatically execute all steps
+                </div>
               </div>
-              </div>
+            </div>
             <div className="flex gap-3">
               <span className="text-2xl">4️⃣</span>
               <div>
-                <div className="font-semibold text-purple-300">Watch Variables</div>
-                <div className="text-sm">See variables update in real-time on the right panel</div>
+                <div className="font-semibold text-purple-300">
+                  Watch Variables
+                </div>
+                <div className="text-sm">
+                  See variables update in real-time on the right panel
+                </div>
               </div>
             </div>
           </div>
