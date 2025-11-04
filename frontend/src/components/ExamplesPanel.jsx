@@ -11,6 +11,30 @@ const EXAMPLES = [
     code: `let numbers = [1, 2, 3, 4, 5];\nlet fruits = ["apple", "banana"];\nlet first = numbers[0];`
   },
   {
+    title: 'Array Methods',
+    code: `let nums = [1, 2, 3];\nnums.push(4);\nnums.pop();\nlet len = nums.length;\nconsole.log(nums);`
+  },
+  {
+    title: 'Array Map',
+    code: `let numbers = [1, 2, 3, 4];\nlet doubled = numbers.map(x => x * 2);\nconsole.log(doubled);`
+  },
+  {
+    title: 'Array Filter',
+    code: `let numbers = [1, 2, 3, 4, 5, 6];\nlet evens = numbers.filter(x => x % 2 === 0);\nconsole.log(evens);`
+  },
+  {
+    title: 'String Methods',
+    code: `let text = "Hello World";\nlet upper = text.toUpperCase();\nlet sub = text.substring(0, 5);\nlet len = text.length;\nconsole.log(upper);`
+  },
+  {
+    title: 'Template Literals',
+    code: `let name = "Alice";\nlet age = 25;\nlet message = \`Hello \${name}, you are \${age} years old\`;\nconsole.log(message);`
+  },
+  {
+    title: 'Arrow Functions',
+    code: `const add = (a, b) => a + b;\nconst square = x => x * x;\nlet result = add(5, 3);\nlet sq = square(4);\nconsole.log(result);`
+  },
+  {
     title: 'Functions',
     code: `function add(a, b) {\n  let result = a + b;\n  return result;\n}\nlet answer = add(5, 3);\nconsole.log(answer);`
   },
@@ -23,8 +47,8 @@ const EXAMPLES = [
     code: `let age = 18;\nif (age >= 18) {\n  let status = "adult";\n} else {\n  let status = "minor";\n}`
   },
   {
-    title: 'While Loop',
-    code: `let count = 0;\nwhile (count < 3) {\n  console.log(count);\n  count++;\n}`
+    title: 'Complex Example',
+    code: `let numbers = [1, 2, 3, 4, 5];\nlet doubled = numbers.map(x => x * 2);\nlet sum = doubled.reduce((acc, val) => acc + val, 0);\nconsole.log(\`Sum: \${sum}\`);`
   }
 ];
 

@@ -201,6 +201,10 @@ const formatValue = (value) => {
     return `[${value.map(v => formatValue(v)).join(', ')}]`;
   }
   if (typeof value === 'object' && value !== null) {
+     if (value.type === 'arrow-function' || value.type === 'ArrowFunctionExpression') {
+      const params = value.params.map(p => p.name).join(', ');
+      return `(${params}) => {...}`;
+    }
     const entries = Object.entries(value);
     if (entries.length > 3) {
       return `{${entries.slice(0, 3).map(([k, v]) => `${k}: ${formatValue(v)}`).join(', ')}, ...}`;

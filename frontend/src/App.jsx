@@ -140,13 +140,6 @@ function App() {
           </div>
         )}
 
-        <ExamplesPanel
-          onSelectExample={(exampleCode) => {
-            setCode(exampleCode);
-            handleReset();
-          }}
-        />
-
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Code Editor (takes 2 columns on large screens) */}
@@ -181,7 +174,13 @@ function App() {
             />
           </div>
         </div>
-
+        
+        <ExamplesPanel
+          onSelectExample={(exampleCode) => {
+            setCode(exampleCode);
+            handleReset();
+          }}
+        />
         {/* Instructions Footer */}
         <div className="mt-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-6">
           <h3 className="text-xl font-semibold text-white mb-4">
