@@ -97,12 +97,12 @@ class CodeInterpreter {
   // Execute AST node
   executeNode(node) {
     if (!node) return;
-    console.log(`node type ${node.type}`);
+    // console.log(`node type ${node.type}`);
     switch (node.type) {
       case "Program":
         for (const statement of node.body) {
-          console.log(`statement ${statement}`);
-          console.log(`statement type ${statement.type}`);
+          // console.log(`statement ${statement}`);
+          // console.log(`statement type ${statement.type}`);
 
           const result = this.executeNode(statement);
           if (result !== undefined) return result;
@@ -165,7 +165,7 @@ class CodeInterpreter {
 
   // Handle Variable Declaration
   handleVariableDeclaration(node) {
-    console.log(`inside handleVariabledeclaration`);
+    // console.log(`inside handleVariabledeclaration`);
     node.declarations.forEach((declaration) => {
       const varName = declaration.id.name;
       const value = declaration.init
@@ -279,7 +279,7 @@ class CodeInterpreter {
 
   // Handle function calls
   handleFunctionCall(node) {
-    console.log(`callee type ${node.callee.type}`);
+    // console.log(`callee type ${node.callee.type}`);
     // Handle console.log **before** evaluating expressions
     if (
       node.callee.type === "MemberExpression" &&
@@ -307,7 +307,7 @@ class CodeInterpreter {
 
     // Now safely handle other MemberExpressions
     if (node.callee.type === "MemberExpression") {
-      console.log("inside memberExpression");
+      // console.log("inside memberExpression");
       const object = this.evaluateExpression(node.callee.object);
       const methodName = node.callee.property.name;
 
@@ -417,15 +417,125 @@ class CodeInterpreter {
     return result;
   }
 
-  // Handle Arraay methods
+  // FIXED: Helper to create callback preview
+  getCallbackPreview(callback) {
+  if (!callback) return "(no callback)";
+
+  if (callback.type === "arrow-function") {
+    try {
+      const params = callback.params.map((p) => p.name || "?").join(", ");
+      const body = callback.body;
+
+      // Helper: recursively convert any expression to string
+      const stringifyExpr = (node) => {
+        if (!node) return "?";
+        switch (node.type) {
+          case "BinaryExpression":
+            return `${stringifyExpr(node.left)} ${node.operator} ${stringifyExpr(node.right)}`;
+          case "Identifier":
+            return node.name;
+          case "Literal":
+            return JSON.stringify(node.value);
+          default:
+            return "?";
+        }
+      };
+
+      if (callback.isExpression && body) {
+        // 🔍 Handle binary and nested binary expressions properly
+        if (body.type === "BinaryExpression") {
+          const exprString = stringifyExpr(body);
+          return exprString;
+        }
+        if (body.type === "Identifier") return body.name;
+        if (body.type === "Literal") return JSON.stringify(body.value);
+      }
+
+      return `(${params}) => {...}`;
+    } catch (e) {
+      console.log("Preview Error:", e);
+      return "(callback)";
+    }
+  }
+
+  if (typeof callback === "function") return "(function)";
+  return "(callback)";
+}
+
+
+  // FIXED: Handle array methods with proper node passing
   handleArrayMethod(node, array, methodName) {
     const args = node.arguments.map((arg) => this.evaluateExpression(arg));
     let result;
     let description;
 
+    // Define which methods need detailed visualization
+    const iteratorMethods = [
+      "map",
+      "filter",
+      "forEach",
+      "find",
+      "findIndex",
+      "some",
+      "every",
+      "reduce",
+    ];
+
+    if (iteratorMethods.includes(methodName)) {
+      // Call the iterator handler which will create its own detailed steps
+      switch (methodName) {
+        case "map":
+          result = this.handleArrayIteratorMethod(array, args[0], "map", node);
+          return result; // Don't create duplicate step
+
+        case "filter":
+          result = this.handleArrayIteratorMethod(
+            array,
+            args[0],
+            "filter",
+            node
+          );
+          return result;
+
+        case "forEach":
+          this.handleArrayIteratorMethod(array, args[0], "forEach", node);
+          return undefined;
+
+        case "reduce":
+          result = this.handleArrayReduce(array, args[0], args[1], node);
+          return result;
+
+        case "find":
+          result = this.handleArrayIteratorMethod(array, args[0], "find", node);
+          return result;
+
+        case "findIndex":
+          result = this.handleArrayIteratorMethod(
+            array,
+            args[0],
+            "findIndex",
+            node
+          );
+          return result;
+
+        case "some":
+          result = this.handleArrayIteratorMethod(array, args[0], "some", node);
+          return result;
+
+        case "every":
+          result = this.handleArrayIteratorMethod(
+            array,
+            args[0],
+            "every",
+            node
+          );
+          return result;
+      }
+    }
+
+    // Handle non-iterator methods (push, pop, etc.)
     switch (methodName) {
       case "push":
-        console.log("inside push");
         result = array.push(...args);
         description = `Array.push(${args
           .map((a) => this.formatValue(a))
@@ -461,47 +571,6 @@ class CodeInterpreter {
         description = `Array.splice(${args.join(
           ", "
         )}) → removed: ${this.formatValue(result)}`;
-        break;
-
-      case "map":
-        result = this.handleArrayIteratorMethod(array, args[0], "map");
-        description = `Array.map() → ${this.formatValue(result)}`;
-        break;
-
-      case "filter":
-        result = this.handleArrayIteratorMethod(array, args[0], "filter");
-        description = `Array.filter() → ${this.formatValue(result)}`;
-        break;
-
-      case "forEach":
-        this.handleArrayIteratorMethod(array, args[0], "forEach");
-        result = undefined;
-        description = `Array.forEach() executed`;
-        break;
-
-      case "reduce":
-        result = this.handleArrayReduce(array, args[0], args[1]);
-        description = `Array.reduce() → ${this.formatValue(result)}`;
-        break;
-
-      case "find":
-        result = this.handleArrayIteratorMethod(array, args[0], "find");
-        description = `Array.find() → ${this.formatValue(result)}`;
-        break;
-
-      case "findIndex":
-        result = this.handleArrayIteratorMethod(array, args[0], "findIndex");
-        description = `Array.findIndex() → ${result}`;
-        break;
-
-      case "some":
-        result = this.handleArrayIteratorMethod(array, args[0], "some");
-        description = `Array.some() → ${result}`;
-        break;
-
-      case "every":
-        result = this.handleArrayIteratorMethod(array, args[0], "every");
-        description = `Array.every() → ${result}`;
         break;
 
       case "join":
@@ -552,14 +621,38 @@ class CodeInterpreter {
     return result;
   }
 
-  // Handle array iterator methods (map, filter, forEach, etc.)
-  handleArrayIteratorMethod(array, callback, methodName) {
+  // FIXED: Enhanced array iterator method with detailed visualization
+  handleArrayIteratorMethod(array, callback, methodName, node) {
     if (!callback) {
       throw new Error(`${methodName} requires a callback function`);
     }
 
     const results = [];
+    const PREVIEW_LIMIT = 3;
 
+    // Start step with preview
+    const previewVals = array
+      .slice(0, PREVIEW_LIMIT)
+      .map((v) => this.formatValue(v))
+      .join(", ");
+    const previewDesc =
+      array.length > PREVIEW_LIMIT
+        ? `[${previewVals}, ...] (${array.length} items)`
+        : `[${previewVals}] (${array.length} items)`;
+
+    this.addStep({
+      line: node && node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node && node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: this.deepClone(this.getCurrentScope()),
+      description: `${methodName}() starting on ${previewDesc}`,
+      type: "array-iterator-start",
+      method: methodName,
+      consoleOutput: this.deepClone(this.consoleOutput),
+      callStack: this.deepClone(this.callStack),
+    });
+
+    // Process each element
     for (let i = 0; i < array.length; i++) {
       const element = array[i];
       const callbackResult = this.executeCallback(callback, [
@@ -568,6 +661,7 @@ class CodeInterpreter {
         array,
       ]);
 
+      // Handle method-specific logic
       switch (methodName) {
         case "map":
           results.push(callbackResult);
@@ -576,7 +670,21 @@ class CodeInterpreter {
           if (callbackResult) results.push(element);
           break;
         case "find":
-          if (callbackResult) return element;
+          if (callbackResult) {
+            this.addStep({
+              line: node && node.loc ? node.loc.start.line - 1 : -1,
+              lineNumber: node && node.loc ? node.loc.start.line : 0,
+              lineContent: this.getLineContent(node),
+              variables: this.deepClone(this.getCurrentScope()),
+              description: `${methodName}() found at index ${i}: ${this.formatValue(
+                element
+              )}`,
+              type: "array-iterator-end",
+              consoleOutput: this.deepClone(this.consoleOutput),
+              callStack: this.deepClone(this.callStack),
+            });
+            return element;
+          }
           break;
         case "findIndex":
           if (callbackResult) return i;
@@ -588,38 +696,151 @@ class CodeInterpreter {
           if (!callbackResult) return false;
           break;
         case "forEach":
-          // Just execute, no return
+          // Just execute
           break;
       }
+
+      // Detailed steps for first PREVIEW_LIMIT items
+      if (i < PREVIEW_LIMIT) {
+        const cbPreview = this.getCallbackPreview(callback);
+        const inputVal = this.formatValue(element);
+        const outputVal = this.formatValue(callbackResult);
+
+        this.addStep({
+          line: node && node.loc ? node.loc.start.line - 1 : -1,
+          lineNumber: node && node.loc ? node.loc.start.line : 0,
+          lineContent: this.getLineContent(node),
+          variables: this.deepClone(this.getCurrentScope()),
+          description: `${methodName}[${i}]: ${inputVal} → ${cbPreview} → ${outputVal}`,
+          type: "array-iterator",
+          index: i,
+          consoleOutput: this.deepClone(this.consoleOutput),
+          callStack: this.deepClone(this.callStack),
+        });
+      }
     }
-    // Default return values
+
+    // Default returns
     if (methodName === "findIndex") return -1;
     if (methodName === "some") return false;
     if (methodName === "every") return true;
-    if (methodName === "forEach") return undefined;
+    if (methodName === "forEach") {
+      this.addStep({
+        line: node && node.loc ? node.loc.start.line - 1 : -1,
+        lineNumber: node && node.loc ? node.loc.start.line : 0,
+        lineContent: this.getLineContent(node),
+        variables: this.deepClone(this.getCurrentScope()),
+        description: `${methodName}() completed`,
+        type: "array-iterator-end",
+        consoleOutput: this.deepClone(this.consoleOutput),
+        callStack: this.deepClone(this.callStack),
+      });
+      return undefined;
+    }
+
+    // Final result step
+    this.addStep({
+      line: node && node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node && node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: this.deepClone(this.getCurrentScope()),
+      description: `${methodName}() result → ${this.formatValue(results)}`,
+      type: "array-iterator-end",
+      consoleOutput: this.deepClone(this.consoleOutput),
+      callStack: this.deepClone(this.callStack),
+    });
 
     return results;
   }
 
-  // Handle array reduce
-  handleArrayReduce(array, callback, initialValue) {
-    if (!callback) {
-      throw new Error("reduce requires a callback function");
-    }
-
-    let accumulator = initialValue !== undefined ? initialValue : array[0];
-    const startIndex = initialValue !== undefined ? 0 : 1;
-
-    for (let i = startIndex; i < array.length; i++) {
-      accumulator = this.executeCallback(callback, [
-        accumulator,
-        array[i],
-        i,
-        array,
-      ]);
-    }
-    return accumulator;
+  // FIXED: Add node parameter to reduce
+ handleArrayReduce(array, callback, initialValue, node) {
+  if (!callback) {
+    throw new Error("reduce requires a callback function");
   }
+
+  const PREVIEW_LIMIT = 5; // show first 5 reduce steps
+
+  let accumulator = initialValue !== undefined ? initialValue : array[0];
+  const startIndex = initialValue !== undefined ? 0 : 1;
+
+  // Step 1: Start visualization
+  const previewVals = array
+    .slice(0, PREVIEW_LIMIT)
+    .map((v) => this.formatValue(v))
+    .join(", ");
+  const previewDesc =
+    array.length > PREVIEW_LIMIT
+      ? `[${previewVals}, ...] (${array.length} items)`
+      : `[${previewVals}] (${array.length} items)`;
+
+  this.addStep({
+    line: node && node.loc ? node.loc.start.line - 1 : -1,
+    lineNumber: node && node.loc ? node.loc.start.line : 0,
+    lineContent: this.getLineContent(node),
+    variables: this.deepClone(this.getCurrentScope()),
+    description: `reduce() starting with accumulator = ${this.formatValue(
+      accumulator
+    )}, array = ${previewDesc}`,
+    type: "array-reduce-start",
+    method: "reduce",
+    consoleOutput: this.deepClone(this.consoleOutput),
+    callStack: this.deepClone(this.callStack),
+  });
+
+  // Step 2: Iteration
+  for (let i = startIndex; i < array.length; i++) {
+    const current = array[i];
+    const prevAccumulator = accumulator;
+
+    // Execute callback
+    const callbackResult = this.executeCallback(callback, [
+      accumulator,
+      current,
+      i,
+      array,
+    ]);
+
+    accumulator = callbackResult;
+
+    // Detailed visualization for first few items
+    if (i - startIndex < PREVIEW_LIMIT) {
+      const cbPreview = this.getCallbackPreview(callback);
+      this.addStep({
+        line: node && node.loc ? node.loc.start.line - 1 : -1,
+        lineNumber: node && node.loc ? node.loc.start.line : 0,
+        lineContent: this.getLineContent(node),
+        variables: this.deepClone(this.getCurrentScope()),
+        description: `reduce[${i}]: acc=${this.formatValue(
+          prevAccumulator
+        )}, cur=${this.formatValue(current)} → ${cbPreview} → result=${this.formatValue(
+          accumulator
+        )}`,
+        type: "array-reduce-step",
+        index: i,
+        consoleOutput: this.deepClone(this.consoleOutput),
+        callStack: this.deepClone(this.callStack),
+      });
+    }
+  }
+
+  // Step 3: Final result
+  this.addStep({
+    line: node && node.loc ? node.loc.start.line - 1 : -1,
+    lineNumber: node && node.loc ? node.loc.start.line : 0,
+    lineContent: this.getLineContent(node),
+    variables: this.deepClone(this.getCurrentScope()),
+    description: `reduce() → final result = ${this.formatValue(accumulator)}`,
+    type: "array-reduce-end",
+    method: "reduce",
+    result: accumulator,
+    consoleOutput: this.deepClone(this.consoleOutput),
+    callStack: this.deepClone(this.callStack),
+  });
+
+  return accumulator;
+}
+
 
   // Execute callback function (for array methods)
   executeCallback(callback, args) {
@@ -836,7 +1057,7 @@ class CodeInterpreter {
       }
 
       const condition = this.evaluateExpression(node.test);
-      console.log(`condition = ${condition}`);
+      // console.log(`condition = ${condition}`);
 
       this.addStep({
         line: node.loc ? node.loc.start.line - 1 : -1,
@@ -860,7 +1081,7 @@ class CodeInterpreter {
 
   // Evaluate expressions
   evaluateExpression(node) {
-    console.log(`inside evaluate expression ${node.type}`);
+    // console.log(`inside evaluate expression ${node.type}`);
     if (!node) return undefined;
 
     switch (node.type) {
@@ -953,7 +1174,7 @@ class CodeInterpreter {
 
   // Handle update expressions (++, --)
   handleUpdateExpression(node) {
-    console.log("inside handleupdate");
+    // console.log("inside handleupdate");
     const varName = node.argument.name;
     const currentValue = this.getVariable(varName);
     const newValue =
@@ -1030,10 +1251,10 @@ class CodeInterpreter {
 
   setVariable(name, value) {
     this.scopes[this.scopes.length - 1][name] = value;
-    console.log(
-      `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
-        value)}`
-    );
+    // console.log(
+    //   `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
+    //     value)}`
+    // );
   }
 
   /**
@@ -1042,7 +1263,7 @@ class CodeInterpreter {
    */
   getVariable(name) {
     // Look through scopes from innermost to outermost
-    console.log(`inside get variable ${name}`);
+    // console.log(`inside get variable ${name}`);
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       if (this.scopes[i].hasOwnProperty(name)) {
         return this.scopes[i][name];
@@ -1053,9 +1274,38 @@ class CodeInterpreter {
 
   deepClone(obj) {
     if (typeof structuredClone === "function") {
-      return structuredClone(obj);
+      try {
+        return structuredClone(obj);
+      } catch (e) {
+        // structuredClone fails on functions/AST nodes
+        return JSON.parse(JSON.stringify(obj, this.getCircularReplacer()));
+      }
     }
-    return JSON.parse(JSON.stringify(obj)); // fallback
+    return JSON.parse(JSON.stringify(obj, this.getCircularReplacer()));
+  }
+
+  getCircularReplacer() {
+    const seen = new WeakSet();
+    return (key, value) => {
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) {
+          return "[Circular]";
+        }
+        seen.add(value);
+      }
+      // Skip functions and AST-like objects
+      if (typeof value === "function") {
+        return undefined;
+      }
+      if (
+        value &&
+        value.type &&
+        (value.type.includes("Expression") || value.type.includes("Statement"))
+      ) {
+        return undefined;
+      }
+      return value;
+    };
   }
 
   // Helper to get source line content
@@ -1086,8 +1336,11 @@ class CodeInterpreter {
     }
 
     if (typeof value === "object" && value !== null) {
-        if (value.type === "arrow-function" || value.type === "ArrowFunctionExpression") {
-        const params = value.params.map(p => p.name).join(", ");
+      if (
+        value.type === "arrow-function" ||
+        value.type === "ArrowFunctionExpression"
+      ) {
+        const params = value.params.map((p) => p.name).join(", ");
         return `(${params}) => {...}`;
       }
       const entries = Object.entries(value);
