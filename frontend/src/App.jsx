@@ -4,6 +4,7 @@ import ControlPanel from "./components/ControlPanel";
 import VisualizationPanel from "./components/VisualizationPanel";
 import CodeInterpreter from "./utils/interpreter";
 import ExamplesPanel from "./components/ExamplesPanel";
+import ErrorDisplay from './components/ErrorDisplay';
 
 function App() {
   // Sample code to start with
@@ -20,6 +21,7 @@ function App() {
   const runIntervalRef = useRef(null);
 
   // Create interpreter instance
+  // stores value and changes in value does not trigger re-renders
   const interpreterRef = useRef(new CodeInterpreter());
 
   // Handle code execution
@@ -127,7 +129,7 @@ function App() {
           </p>
         </div>
 
-        {/* Error Display */}
+        {/* Error Display
         {error && (
           <div className="mb-6 bg-red-900 border-2 border-red-500 rounded-lg p-4">
             <div className="flex items-center gap-2 text-red-200">
@@ -138,7 +140,9 @@ function App() {
               </div>
             </div>
           </div>
-        )}
+        )} */}
+
+        <ErrorDisplay error={error} onDismiss={() => setError('')} />
 
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

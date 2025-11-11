@@ -18,6 +18,10 @@ class CodeInterpreter {
    */
   execute(code) {
     try {
+      // Store source code for line extraction
+      this.sourceCode = code;
+      this.sourceLines = code.split('\n');
+
       // Reset state
       this.steps = [];
       this.variables = {};
@@ -97,12 +101,12 @@ class CodeInterpreter {
   // Execute AST node
   executeNode(node) {
     if (!node) return;
-    // console.log(`node type ${node.type}`);
+    console.log(`node type ${node.type}`);
     switch (node.type) {
       case "Program":
         for (const statement of node.body) {
           // console.log(`statement ${statement}`);
-          // console.log(`statement type ${statement.type}`);
+          console.log(`statement type ${statement.type}`);
 
           const result = this.executeNode(statement);
           if (result !== undefined) return result;
@@ -157,6 +161,14 @@ class CodeInterpreter {
       case "ArrowFunctionExpression":
         return this.createArrowFunction(node);
 
+      case 'ForOfStatement':
+        this.handleForOfLoop(node)
+        break
+
+      case 'ForInStatement':
+        this.handleForInLoop(node)
+        break
+
       default:
         // Silently ignore unsupported node types
         break;
@@ -164,41 +176,114 @@ class CodeInterpreter {
   }
 
   // Handle Variable Declaration
+  // handleVariableDeclaration(node) {
+  //   // console.log(`inside handleVariabledeclaration`);
+  //   node.declarations.forEach((declaration) => {
+  //     const varName = declaration.id.name;
+  //     const value = declaration.init
+  //       ? this.evaluateExpression(declaration.init)
+  //       : undefined;
+
+  //     this.setVariable(varName, value);
+
+  //     // store arrow function for future calls
+  //     if (value && value.type === "arrow-function") {
+  //       this.functions[varName] = value;
+  //     }
+
+  //     this.addStep({
+  //       line: node.loc ? node.loc.start.line - 1 : -1,
+  //       lineNumber: node.loc ? node.loc.start.line : 0,
+  //       lineContent: this.getLineContent(node),
+  //       // variables: { ...this.getCurrentScope() },
+  //       variables: this.deepClone(this.getCurrentScope()),
+  //       description: `Declared '${varName}' = ${this.formatValue(value)}`,
+  //       type: "declaration",
+  //       variable: varName,
+  //       value: value,
+  //       consoleOutput: this.deepClone(this.consoleOutput),
+  //       callStack: this.deepClone(this.callStack),
+  //     });
+  //   });
+  // }
+
   handleVariableDeclaration(node) {
-    // console.log(`inside handleVariabledeclaration`);
-    node.declarations.forEach((declaration) => {
-      const varName = declaration.id.name;
-      const value = declaration.init
-        ? this.evaluateExpression(declaration.init)
-        : undefined;
+    node.declarations.forEach(declaration => {
+      const init = declaration.init ? this.evaluateExpression(declaration.init) : undefined;
 
-      this.setVariable(varName, value);
+      // Handle destructuring
+      if (declaration.id.type === 'ArrayPattern') {
+        // Array destructuring: const [a, b] = [1, 2]
+        declaration.id.elements.forEach((element, index) => {
+          if (element && element.name) {
+            const varName = element.name;
+            const value = init[index];
+            this.setVariable(varName, value);
 
-      // store arrow function for future calls
-      if (value && value.type === "arrow-function") {
-        this.functions[varName] = value;
+            this.addStep({
+              line: node.loc ? node.loc.start.line - 1 : -1,
+              lineNumber: node.loc ? node.loc.start.line : 0,
+              lineContent: this.getLineContent(node),
+              variables: { ...this.getCurrentScope() },
+              description: `Destructured '${varName}' = ${this.formatValue(value)}`,
+              type: 'declaration',
+              variable: varName,
+              value: value,
+              consoleOutput: [...this.consoleOutput],
+              callStack: [...this.callStack]
+            });
+          }
+        });
+      } else if (declaration.id.type === 'ObjectPattern') {
+        // Object destructuring: const {name, age} = person
+        declaration.id.properties.forEach(prop => {
+          const key = prop.key.name;
+          const varName = prop.value.name || key;
+          const value = init[key];
+          this.setVariable(varName, value);
+
+          this.addStep({
+            line: node.loc ? node.loc.start.line - 1 : -1,
+            lineNumber: node.loc ? node.loc.start.line : 0,
+            lineContent: this.getLineContent(node),
+            variables: { ...this.getCurrentScope() },
+            description: `Destructured '${varName}' = ${this.formatValue(value)}`,
+            type: 'declaration',
+            variable: varName,
+            value: value,
+            consoleOutput: [...this.consoleOutput],
+            callStack: [...this.callStack]
+          });
+        });
+      } else {
+        // Regular declaration
+        const varName = declaration.id.name;
+        const value = init;
+
+        this.setVariable(varName, value);
+
+        this.addStep({
+          line: node.loc ? node.loc.start.line - 1 : -1,
+          lineNumber: node.loc ? node.loc.start.line : 0,
+          lineContent: this.getLineContent(node),
+          variables: { ...this.getCurrentScope() },
+          description: `Declared '${varName}' = ${this.formatValue(value)}`,
+          type: 'declaration',
+          variable: varName,
+          value: value,
+          consoleOutput: [...this.consoleOutput],
+          callStack: [...this.callStack]
+        });
       }
-
-      this.addStep({
-        line: node.loc ? node.loc.start.line - 1 : -1,
-        lineNumber: node.loc ? node.loc.start.line : 0,
-        lineContent: this.getLineContent(node),
-        // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
-        description: `Declared '${varName}' = ${this.formatValue(value)}`,
-        type: "declaration",
-        variable: varName,
-        value: value,
-        consoleOutput: this.deepClone(this.consoleOutput),
-        callStack: this.deepClone(this.callStack),
-      });
     });
   }
 
   // Handle Assignments
   handleAssignment(node) {
+    console.log("entered handle assignment")
     // Handle member expression assignments (arr[0] = value, obj.prop = value)
-    if ((node.left.type = "MemberExpression")) {
+    if ((node.left.type === "MemberExpression")) {
+      console.log("entered member exp")
       const object = this.evaluateExpression(node.left.object);
       const property = node.left.computed
         ? this.evaluateExpression(node.left.property)
@@ -213,9 +298,8 @@ class CodeInterpreter {
         lineContent: this.getLineContent(node),
         // variables: { ...this.getCurrentScope() },
         variables: this.deepClone(this.getCurrentScope()),
-        description: `Set ${
-          node.left.object.name
-        }[${property}] = ${this.formatValue(value)}`,
+        description: `Set ${node.left.object.name
+          }[${property}] = ${this.formatValue(value)}`,
         type: "assignment",
         consoleOutput: this.deepClone(this.consoleOutput),
         callStack: this.deepClone(this.callStack),
@@ -223,9 +307,10 @@ class CodeInterpreter {
 
       return value;
     }
-
+console.log("reached here")
     // Regular variable assignment
     const varName = node.left.name;
+    console.log(`varname : ${varName}`)
     const value = this.evaluateExpression(node.right);
 
     this.setVariable(varName, value);
@@ -317,6 +402,10 @@ class CodeInterpreter {
       }
       if (typeof object === "string") {
         return this.handleStringMethod(node, object, methodName);
+      }
+      // Handle Object static methods (Object.keys, etc.)
+      if (node.callee.object.name === 'Object') {
+        return this.handleObjectMethod(node, object, methodName);
       }
       if (typeof object === "object" && object !== null) {
         return this.handleObjectMethod(node, object, methodName);
@@ -419,48 +508,48 @@ class CodeInterpreter {
 
   // FIXED: Helper to create callback preview
   getCallbackPreview(callback) {
-  if (!callback) return "(no callback)";
+    if (!callback) return "(no callback)";
 
-  if (callback.type === "arrow-function") {
-    try {
-      const params = callback.params.map((p) => p.name || "?").join(", ");
-      const body = callback.body;
+    if (callback.type === "arrow-function") {
+      try {
+        const params = callback.params.map((p) => p.name || "?").join(", ");
+        const body = callback.body;
 
-      // Helper: recursively convert any expression to string
-      const stringifyExpr = (node) => {
-        if (!node) return "?";
-        switch (node.type) {
-          case "BinaryExpression":
-            return `${stringifyExpr(node.left)} ${node.operator} ${stringifyExpr(node.right)}`;
-          case "Identifier":
-            return node.name;
-          case "Literal":
-            return JSON.stringify(node.value);
-          default:
-            return "?";
+        // Helper: recursively convert any expression to string
+        const stringifyExpr = (node) => {
+          if (!node) return "?";
+          switch (node.type) {
+            case "BinaryExpression":
+              return `${stringifyExpr(node.left)} ${node.operator} ${stringifyExpr(node.right)}`;
+            case "Identifier":
+              return node.name;
+            case "Literal":
+              return JSON.stringify(node.value);
+            default:
+              return "?";
+          }
+        };
+
+        if (callback.isExpression && body) {
+          // 🔍 Handle binary and nested binary expressions properly
+          if (body.type === "BinaryExpression") {
+            const exprString = stringifyExpr(body);
+            return exprString;
+          }
+          if (body.type === "Identifier") return body.name;
+          if (body.type === "Literal") return JSON.stringify(body.value);
         }
-      };
 
-      if (callback.isExpression && body) {
-        // 🔍 Handle binary and nested binary expressions properly
-        if (body.type === "BinaryExpression") {
-          const exprString = stringifyExpr(body);
-          return exprString;
-        }
-        if (body.type === "Identifier") return body.name;
-        if (body.type === "Literal") return JSON.stringify(body.value);
+        return `(${params}) => {...}`;
+      } catch (e) {
+        console.log("Preview Error:", e);
+        return "(callback)";
       }
-
-      return `(${params}) => {...}`;
-    } catch (e) {
-      console.log("Preview Error:", e);
-      return "(callback)";
     }
-  }
 
-  if (typeof callback === "function") return "(function)";
-  return "(callback)";
-}
+    if (typeof callback === "function") return "(function)";
+    return "(callback)";
+  }
 
 
   // FIXED: Handle array methods with proper node passing
@@ -754,92 +843,92 @@ class CodeInterpreter {
   }
 
   // FIXED: Add node parameter to reduce
- handleArrayReduce(array, callback, initialValue, node) {
-  if (!callback) {
-    throw new Error("reduce requires a callback function");
-  }
-
-  const PREVIEW_LIMIT = 5; // show first 5 reduce steps
-
-  let accumulator = initialValue !== undefined ? initialValue : array[0];
-  const startIndex = initialValue !== undefined ? 0 : 1;
-
-  // Step 1: Start visualization
-  const previewVals = array
-    .slice(0, PREVIEW_LIMIT)
-    .map((v) => this.formatValue(v))
-    .join(", ");
-  const previewDesc =
-    array.length > PREVIEW_LIMIT
-      ? `[${previewVals}, ...] (${array.length} items)`
-      : `[${previewVals}] (${array.length} items)`;
-
-  this.addStep({
-    line: node && node.loc ? node.loc.start.line - 1 : -1,
-    lineNumber: node && node.loc ? node.loc.start.line : 0,
-    lineContent: this.getLineContent(node),
-    variables: this.deepClone(this.getCurrentScope()),
-    description: `reduce() starting with accumulator = ${this.formatValue(
-      accumulator
-    )}, array = ${previewDesc}`,
-    type: "array-reduce-start",
-    method: "reduce",
-    consoleOutput: this.deepClone(this.consoleOutput),
-    callStack: this.deepClone(this.callStack),
-  });
-
-  // Step 2: Iteration
-  for (let i = startIndex; i < array.length; i++) {
-    const current = array[i];
-    const prevAccumulator = accumulator;
-
-    // Execute callback
-    const callbackResult = this.executeCallback(callback, [
-      accumulator,
-      current,
-      i,
-      array,
-    ]);
-
-    accumulator = callbackResult;
-
-    // Detailed visualization for first few items
-    if (i - startIndex < PREVIEW_LIMIT) {
-      const cbPreview = this.getCallbackPreview(callback);
-      this.addStep({
-        line: node && node.loc ? node.loc.start.line - 1 : -1,
-        lineNumber: node && node.loc ? node.loc.start.line : 0,
-        lineContent: this.getLineContent(node),
-        variables: this.deepClone(this.getCurrentScope()),
-        description: `reduce[${i}]: acc=${this.formatValue(
-          prevAccumulator
-        )}, cur=${this.formatValue(current)} → ${cbPreview} → result=${this.formatValue(
-          accumulator
-        )}`,
-        type: "array-reduce-step",
-        index: i,
-        consoleOutput: this.deepClone(this.consoleOutput),
-        callStack: this.deepClone(this.callStack),
-      });
+  handleArrayReduce(array, callback, initialValue, node) {
+    if (!callback) {
+      throw new Error("reduce requires a callback function");
     }
+
+    const PREVIEW_LIMIT = 5; // show first 5 reduce steps
+
+    let accumulator = initialValue !== undefined ? initialValue : array[0];
+    const startIndex = initialValue !== undefined ? 0 : 1;
+
+    // Step 1: Start visualization
+    const previewVals = array
+      .slice(0, PREVIEW_LIMIT)
+      .map((v) => this.formatValue(v))
+      .join(", ");
+    const previewDesc =
+      array.length > PREVIEW_LIMIT
+        ? `[${previewVals}, ...] (${array.length} items)`
+        : `[${previewVals}] (${array.length} items)`;
+
+    this.addStep({
+      line: node && node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node && node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: this.deepClone(this.getCurrentScope()),
+      description: `reduce() starting with accumulator = ${this.formatValue(
+        accumulator
+      )}, array = ${previewDesc}`,
+      type: "array-reduce-start",
+      method: "reduce",
+      consoleOutput: this.deepClone(this.consoleOutput),
+      callStack: this.deepClone(this.callStack),
+    });
+
+    // Step 2: Iteration
+    for (let i = startIndex; i < array.length; i++) {
+      const current = array[i];
+      const prevAccumulator = accumulator;
+
+      // Execute callback
+      const callbackResult = this.executeCallback(callback, [
+        accumulator,
+        current,
+        i,
+        array,
+      ]);
+
+      accumulator = callbackResult;
+
+      // Detailed visualization for first few items
+      if (i - startIndex < PREVIEW_LIMIT) {
+        const cbPreview = this.getCallbackPreview(callback);
+        this.addStep({
+          line: node && node.loc ? node.loc.start.line - 1 : -1,
+          lineNumber: node && node.loc ? node.loc.start.line : 0,
+          lineContent: this.getLineContent(node),
+          variables: this.deepClone(this.getCurrentScope()),
+          description: `reduce[${i}]: acc=${this.formatValue(
+            prevAccumulator
+          )}, cur=${this.formatValue(current)} → ${cbPreview} → result=${this.formatValue(
+            accumulator
+          )}`,
+          type: "array-reduce-step",
+          index: i,
+          consoleOutput: this.deepClone(this.consoleOutput),
+          callStack: this.deepClone(this.callStack),
+        });
+      }
+    }
+
+    // Step 3: Final result
+    this.addStep({
+      line: node && node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node && node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: this.deepClone(this.getCurrentScope()),
+      description: `reduce() → final result = ${this.formatValue(accumulator)}`,
+      type: "array-reduce-end",
+      method: "reduce",
+      result: accumulator,
+      consoleOutput: this.deepClone(this.consoleOutput),
+      callStack: this.deepClone(this.callStack),
+    });
+
+    return accumulator;
   }
-
-  // Step 3: Final result
-  this.addStep({
-    line: node && node.loc ? node.loc.start.line - 1 : -1,
-    lineNumber: node && node.loc ? node.loc.start.line : 0,
-    lineContent: this.getLineContent(node),
-    variables: this.deepClone(this.getCurrentScope()),
-    description: `reduce() → final result = ${this.formatValue(accumulator)}`,
-    type: "array-reduce-end",
-    method: "reduce",
-    result: accumulator,
-    consoleOutput: this.deepClone(this.consoleOutput),
-    callStack: this.deepClone(this.callStack),
-  });
-
-  return accumulator;
-}
 
 
   // Execute callback function (for array methods)
@@ -975,9 +1064,62 @@ class CodeInterpreter {
     return result;
   }
 
-  // Handle object methods
+  // Handle Object static methods
   handleObjectMethod(node, object, methodName) {
-    // This is for future Object.keys(), Object.values(), etc.
+    const args = node.arguments.map(arg => this.evaluateExpression(arg));
+    let result;
+    let description;
+
+    // Check if it's a static Object method
+    if (node.callee.object.name === 'Object') {
+      const targetObject = args[0];
+
+      switch (methodName) {
+        case 'keys':
+          result = Object.keys(targetObject);
+          description = `Object.keys() → ${this.formatValue(result)}`;
+          break;
+
+        case 'values':
+          result = Object.values(targetObject);
+          description = `Object.values() → ${this.formatValue(result)}`;
+          break;
+
+        case 'entries':
+          result = Object.entries(targetObject);
+          description = `Object.entries() → ${this.formatValue(result)}`;
+          break;
+
+        case 'assign':
+          result = Object.assign(targetObject, ...args.slice(1));
+          description = `Object.assign() → ${this.formatValue(result)}`;
+          break;
+
+        case 'freeze':
+          result = Object.freeze(targetObject);
+          description = `Object.freeze() → object frozen`;
+          break;
+
+        default:
+          throw new Error(`Object method '${methodName}' is not supported`);
+      }
+
+      this.addStep({
+        line: node.loc ? node.loc.start.line - 1 : -1,
+        lineNumber: node.loc ? node.loc.start.line : 0,
+        lineContent: this.getLineContent(node),
+        variables: { ...this.getCurrentScope() },
+        description: description,
+        type: 'object-method',
+        method: methodName,
+        result: result,
+        consoleOutput: [...this.consoleOutput],
+        callStack: [...this.callStack]
+      });
+
+      return result;
+    }
+
     throw new Error(`Object method '${methodName}' is not yet supported`);
   }
 
@@ -1079,6 +1221,115 @@ class CodeInterpreter {
     }
   }
 
+  //Handle for-of loops (ES6)
+  handleForOfLoop(node) {
+    const iterable = this.evaluateExpression(node.right)
+
+    if (!iterable || typeof iterable[Symbol.iterator] !== 'function') {
+      throw new Error('for-of requires an iterable')
+    }
+
+    let iterations = 0;
+    const MAX_ITERATIONS = 1000
+
+    for (const value of iterable) {
+      if (iterations++ > MAX_ITERATIONS) {
+        throw new Error('Infinit loop detected')
+      }
+
+
+      // Assign loop variable
+      const varName = node.left.declarations ?
+        node.left.declarations[0].id.name :
+        node.left.name
+
+      if (node.left.type === 'VariableDeclaration') {
+        this.setVariable(varName, value)
+
+        this.addStep({
+          line: node.loc ? node.loc.start.line - 1 : -1,
+          lineNumber: node.loc ? node.loc.start.line : 0,
+          lineContent: this.getLineContent(node),
+          variables: { ...this.getCurrentScope() },
+          description: `For-of loop: ${varName} = ${this.formatValue(value)}`,
+          type: 'loop',
+          variable: varName,
+          value: value,
+          consoleOutput: [...this.consoleOutput],
+          callStack: [...this.callStack]
+        });
+      }
+
+      // Execute loop body
+      this.executeNode(node.body)
+    }
+
+    // Loop exit step
+    this.addStep({
+      line: node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: { ...this.getCurrentScope() },
+      description: 'For-of loop completed',
+      type: 'loop',
+      consoleOutput: [...this.consoleOutput],
+      callStack: [...this.callStack]
+    });
+  }
+
+  // Handle for-in loops
+  handleForInLoop(node) {
+    const object = this.evaluateExpression(node.right)
+
+    if (object === null || object === undefined) {
+      throw new Error('for-in requires an object')
+    }
+
+    let iterations = 0
+    const MAX_ITERATIONS = 1000
+
+    for (const key in object) {
+      if (iterations++ > MAX_ITERATIONS) {
+        throw new Error('Infinite loop detected')
+      }
+
+      // Assign loop variable
+      const varName = node.left.declarations ?
+        node.left.declarations[0].id.name :
+        node.left.name
+
+      if (node.left.type === 'VariableDeclaration') {
+        this.setVariable(varName, key)
+
+        this.addStep({
+          line: node.loc ? node.loc.start.line - 1 : -1,
+          lineNumber: node.loc ? node.loc.start.line : 0,
+          lineContent: this.getLineContent(node),
+          variables: { ...this.getCurrentScope() },
+          description: `For-in loop: ${varName} = "${key}"`,
+          type: 'loop',
+          variable: varName,
+          value: key,
+          consoleOutput: [...this.consoleOutput],
+          callStack: [...this.callStack]
+        });
+      }
+      // Execute loop body
+      this.executeNode(node.body)
+    }
+    // Loop exit step
+    this.addStep({
+      line: node.loc ? node.loc.start.line - 1 : -1,
+      lineNumber: node.loc ? node.loc.start.line : 0,
+      lineContent: this.getLineContent(node),
+      variables: { ...this.getCurrentScope() },
+      description: 'For-in loop completed',
+      type: 'loop',
+      consoleOutput: [...this.consoleOutput],
+      callStack: [...this.callStack]
+    });
+  }
+
   // Evaluate expressions
   evaluateExpression(node) {
     // console.log(`inside evaluate expression ${node.type}`);
@@ -1089,7 +1340,10 @@ class CodeInterpreter {
         return node.value;
 
       case "Identifier":
-        //  console.log(`inside evaluate ${this.getVariable(node.name)}`);
+        // console.log(`inside evaluate ${node.name}`);
+        if (node.name === "undefined") return undefined;
+        if (node.name === "Infinity") return Infinity;
+        if (node.name === "NaN") return NaN;
         return this.getVariable(node.name);
 
       case "BinaryExpression":
@@ -1102,7 +1356,11 @@ class CodeInterpreter {
         return this.evaluateUnaryOp(node.operator, arg);
 
       case "ArrayExpression":
-        return node.elements.map((el) => this.evaluateExpression(el));
+        // Check if there are spread elements
+        if (node.elements.some(el => el && el.type === 'SpreadElement')) {
+          return this.handleSpreadArray(node.elements);
+        }
+        return node.elements.map(el => el ? this.evaluateExpression(el) : undefined);
 
       case "ObjectExpression":
         const obj = {};
@@ -1155,9 +1413,62 @@ class CodeInterpreter {
         }
         break;
 
+      case 'SpreadElement':
+        return this.evaluateExpression(node.argument);
+
+      case 'ArrayPattern':
+        // Array destructuring
+        return this.handleArrayDestructuring(node);
+
+      case 'ObjectPattern':
+        // Object destructuring
+        return this.handleObjectDestructuring(node);
+
       default:
         return undefined;
     }
+  }
+
+
+  /**
+   * Handle array destructuring
+   */
+  handleArrayDestructuring(pattern, values) {
+    pattern.elements.forEach((element, index) => {
+      if (element) {
+        const varName = element.name;
+        const value = values[index];
+        this.setVariable(varName, value);
+      }
+    });
+  }
+
+  /**
+   * Handle object destructuring
+   */
+  handleObjectDestructuring(pattern, object) {
+    pattern.properties.forEach(prop => {
+      const key = prop.key.name;
+      const varName = prop.value.name || key;
+      const value = object[key];
+      this.setVariable(varName, value);
+    });
+  }
+
+  /**
+   * Handle spread in arrays
+   */
+  handleSpreadArray(elements) {
+    const result = [];
+    elements.forEach(element => {
+      if (element.type === 'SpreadElement') {
+        const arr = this.evaluateExpression(element.argument);
+        result.push(...arr);
+      } else {
+        result.push(this.evaluateExpression(element));
+      }
+    });
+    return result;
   }
 
   // Evaluate template literals
@@ -1250,11 +1561,12 @@ class CodeInterpreter {
   }
 
   setVariable(name, value) {
+console.log(`name : ${name}, value : ${value}`)
     this.scopes[this.scopes.length - 1][name] = value;
-    // console.log(
-    //   `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
-    //     value)}`
-    // );
+    console.log(
+      `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
+        value)}`
+    );
   }
 
   /**
@@ -1263,7 +1575,7 @@ class CodeInterpreter {
    */
   getVariable(name) {
     // Look through scopes from innermost to outermost
-    // console.log(`inside get variable ${name}`);
+    console.log(`inside get variable ${name}`);
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       if (this.scopes[i].hasOwnProperty(name)) {
         return this.scopes[i][name];
@@ -1310,8 +1622,11 @@ class CodeInterpreter {
 
   // Helper to get source line content
   getLineContent(node) {
-    if (!node.loc) return "";
-    return `Line ${node.loc.start.line}`;
+    // if (!node.loc) return "";
+    // return `Line ${node.loc.start.line}`;
+    if (!node.loc || !this.sourceLines) return '';
+    const lineIndex = node.loc.start.line - 1;
+    return this.sourceLines[lineIndex] || '';
   }
 
   //Add a step to execution history
@@ -1328,9 +1643,8 @@ class CodeInterpreter {
     if (typeof value === "string") return `"${value}"`;
     if (Array.isArray(value)) {
       if (value.length > 10) {
-        return `[${value.map((v) => this.formatValue(v)).join(", ")}, ... +${
-          value.length - 10
-        } more]`;
+        return `[${value.map((v) => this.formatValue(v)).join(", ")}, ... +${value.length - 10
+          } more]`;
       }
       return `[${value.map((v) => this.formatValue(v)).join(", ")}]`;
     }
