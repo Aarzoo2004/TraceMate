@@ -282,7 +282,7 @@ class CodeInterpreter {
           if (element && element.name) {
             const varName = element.name;
             const value = init[index];
-            this.setVariable(varName, value);
+            this.declareVariable(varName, value, node.kind)
 
             this.addStep({
               line: node.loc ? node.loc.start.line - 1 : -1,
@@ -304,7 +304,8 @@ class CodeInterpreter {
           const key = prop.key.name;
           const varName = prop.value.name || key;
           const value = init[key];
-          this.setVariable(varName, value);
+          this.declareVariable(varName, value, node.kind)
+;
 
           this.addStep({
             line: node.loc ? node.loc.start.line - 1 : -1,
@@ -325,7 +326,8 @@ class CodeInterpreter {
         const initNode = declaration.init
         const value = init;
 
-        this.setVariable(varName, value);
+        this.declareVariable(varName, value, node.kind)
+;
 
         let descriptionText
 
@@ -473,26 +475,38 @@ class CodeInterpreter {
 
     // Now safely handle other MemberExpressions
     if (node.callee.type === "MemberExpression") {
-
       console.log("inside memberExpression");
-      const object = this.evaluateExpression(node.callee.object);
+
       const methodName = node.callee.property.name;
 
-      // Array / String / Object method handling
+      // 1️⃣ STATIC OBJECT METHODS (Object.keys, Object.values, etc.)
+      if (node.callee.object.type === "Identifier" &&
+        node.callee.object.name === "Object") {
+
+        // do NOT evaluate Object as a variable
+        const args = node.arguments.map(arg => this.evaluateExpression(arg));
+        return this.handleObjectMethod(node, args[0], methodName);
+      }
+
+      // 2️⃣ THEN evaluate object safely
+      const object = this.evaluateExpression(node.callee.object);
+
+      // 3️⃣ Array methods
       if (Array.isArray(object)) {
         return this.handleArrayMethod(node, object, methodName);
       }
+
+      // 4️⃣ String methods
       if (typeof object === "string") {
         return this.handleStringMethod(node, object, methodName);
       }
-      // Handle Object static methods (Object.keys, etc.)
-      if (node.callee.object.name === 'Object') {
-        return this.handleObjectMethod(node, object, methodName);
-      }
+
+      // 5️⃣ Instance object methods
       if (typeof object === "object" && object !== null) {
         return this.handleObjectMethod(node, object, methodName);
       }
     }
+
 
     console.log(`funcName: ${node.callee.name}`)
     const funcName = node.callee.name;
@@ -567,7 +581,7 @@ class CodeInterpreter {
 
     // Bind parameters
     func.params.forEach((param, idx) => {
-      this.setVariable(param.name, args[idx]);
+      this.declareVariable(param.name, args[idx]);
     });
 
     // Execute function body
@@ -1028,7 +1042,7 @@ class CodeInterpreter {
       this.pushScope();
 
       callback.params.forEach((param, idx) => {
-        this.setVariable(param.name, args[idx]);
+        this.declareVariable(param.name, args[idx]);
       });
 
       let result;
@@ -1358,7 +1372,8 @@ class CodeInterpreter {
         node.left.name
 
       if (node.left.type === 'VariableDeclaration') {
-        this.setVariable(varName, value)
+        this.declareVariable(varName, value, node.kind)
+
 
         this.addStep({
           line: node.loc ? node.loc.start.line - 1 : -1,
@@ -1417,7 +1432,7 @@ class CodeInterpreter {
         node.left.name
 
       if (node.left.type === 'VariableDeclaration') {
-        this.setVariable(varName, key)
+        this.declareVariable(varName, key)
 
         this.addStep({
           line: node.loc ? node.loc.start.line - 1 : -1,
@@ -1575,7 +1590,8 @@ class CodeInterpreter {
       if (element) {
         const varName = element.name;
         const value = values[index];
-        this.setVariable(varName, value);
+        this.declareVariable(varName, value, node.kind)
+;
       }
     });
   }
@@ -1588,7 +1604,8 @@ class CodeInterpreter {
       const key = prop.key.name;
       const varName = prop.value.name || key;
       const value = object[key];
-      this.setVariable(varName, value);
+      this.declareVariable(varName, value, node.kind)
+;
     });
   }
 
@@ -1703,21 +1720,38 @@ class CodeInterpreter {
     return this.scopes.reduce((acc, scope) => ({ ...acc, ...scope }), {});
   }
 
+  declareVariable(name, value, kind) {
+    this.scopes[this.scopes.length - 1][name] = { 
+      value, 
+      kind // "let", "const", "var"
+    };
+  }
+
   setVariable(name, value) {
 
     // Look for inner to outer
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       if (Object.prototype.hasOwnProperty.call(this.scopes[i], name)) {
-        this.scopes[i][name] = value;
-        return;
+        const entry = this.scopes[i][name];
+        // ❌ const reassignment
+      if (entry.kind === "const") {
+        throw new Error(`Assignment to constant variable '${name}'`);
+      }
+
+      // Update
+      entry.value = value;
+      return;
       }
     }
     // console.log(`name : ${name}, value : ${value}`)
-    this.scopes[this.scopes.length - 1][name] = value;
+    // this.scopes[this.scopes.length - 1][name] = value;
     // console.log(
     //   `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
     //     value)}`
     // );
+
+     // If no variable exists → JS would throw ReferenceError
+  throw new Error(`Variable '${name}' is not defined`);
   }
 
   /**
@@ -1729,7 +1763,7 @@ class CodeInterpreter {
     console.log(`inside get variable ${name}`);
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       if (this.scopes[i].hasOwnProperty(name)) {
-        return this.scopes[i][name];
+        return this.scopes[i][name].value;
       }
     }
     throw new Error(`Variable '${name}' is not defined`);
