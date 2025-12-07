@@ -1,6 +1,12 @@
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
 
+const SIGNAL = {
+  BREAK: Symbol("break"),
+  CONTINUE: Symbol("continue"),
+};
+
+
 class CodeInterpreter {
   constructor() {
     this.steps = []; // Tracks variable states
@@ -101,12 +107,12 @@ class CodeInterpreter {
   // Execute AST node
   executeNode(node) {
     if (!node) return;
-    console.log(`node type ${node.type}`);
+    // console.log(`node type ${node.type}`);
     switch (node.type) {
       case "Program":
         for (const statement of node.body) {
           // console.log(`statement ${statement}`);
-          console.log(`statement type ${statement.type}`);
+          // console.log(`statement type ${statement.type}`);
 
           const result = this.executeNode(statement);
           if (result !== undefined) return result;
@@ -114,6 +120,7 @@ class CodeInterpreter {
         break;
 
       case "VariableDeclaration":
+        console.log("inside variable declaration")
         this.handleVariableDeclaration(node);
         break;
 
@@ -130,6 +137,7 @@ class CodeInterpreter {
         break;
 
       case "FunctionDeclaration":
+        console.log("inside function declaration")
         this.handleFunctionDeclaration(node);
         break;
 
@@ -137,8 +145,7 @@ class CodeInterpreter {
         return this.handleFunctionCall(node);
 
       case "IfStatement":
-        this.handleIfStatement(node);
-        break;
+        return this.handleIfStatement(node);
 
       case "ForStatement":
         this.handleForLoop(node);
@@ -149,8 +156,11 @@ class CodeInterpreter {
         break;
 
       case "BlockStatement":
+        // console.log(`Inside BlockStatement`)
         for (const statement of node.body) {
+          // console.log(statement)
           const result = this.executeNode(statement);
+          // console.log(`result: ${result}`)
           if (result !== undefined) return result; // ⬅️ Propagate return
         }
         break;
@@ -168,6 +178,12 @@ class CodeInterpreter {
       case 'ForInStatement':
         this.handleForInLoop(node)
         break
+
+      case "BreakStatement":
+        return SIGNAL.BREAK;
+
+      case "ContinueStatement":
+        return SIGNAL.CONTINUE;
 
       default:
         // Silently ignore unsupported node types
@@ -207,8 +223,56 @@ class CodeInterpreter {
   //   });
   // }
 
+  nodeToCode(node) {
+    if (!node) return "";
+
+    switch (node.type) {
+      case "Identifier":
+        return node.name;
+
+      case "Literal":
+        return this.formatValue(node.value);
+
+      case "BinaryExpression":
+      case "LogicalExpression":
+        return `${this.nodeToCode(node.left)} ${node.operator} ${this.nodeToCode(node.right)}`;
+
+      case "MemberExpression":
+        return `${this.nodeToCode(node.object)}.${this.nodeToCode(node.property)}`;
+
+      default:
+        // Fallback – you can improve later
+        return "";
+    }
+  }
+
+  getExpressionPreview(node, finalValue) {
+    if (!node) return this.formatValue(finalValue);
+
+    // Handle Binary and Logical expressions: a + b, age >= 18, a && b, etc.
+    if (node.type === "BinaryExpression" || node.type === "LogicalExpression") {
+      const leftVal = this.evaluateExpression(node.left);
+      const rightVal = this.evaluateExpression(node.right);
+
+      const leftCode = this.nodeToCode(node.left);   // e.g. "a"
+      const rightCode = this.nodeToCode(node.right); // e.g. "b"
+
+      const leftValStr = this.formatValue(leftVal);   // e.g. "10"
+      const rightValStr = this.formatValue(rightVal); // e.g. "3"
+      const finalStr = this.formatValue(finalValue);  // e.g. "13" or "true"
+
+      // Example output: "a + b = 10 + 3 = 13"
+      return `${leftCode} ${node.operator} ${rightCode} = ${leftValStr} ${node.operator} ${rightValStr} = ${finalStr}`;
+    }
+
+    // For other expression types, just show final value for now
+    return this.formatValue(finalValue);
+  }
+
+
   handleVariableDeclaration(node) {
     node.declarations.forEach(declaration => {
+      console.log(declaration.init)
       const init = declaration.init ? this.evaluateExpression(declaration.init) : undefined;
 
       // Handle destructuring
@@ -258,21 +322,35 @@ class CodeInterpreter {
       } else {
         // Regular declaration
         const varName = declaration.id.name;
+        const initNode = declaration.init
         const value = init;
 
         this.setVariable(varName, value);
+
+        let descriptionText
+
+
+        // If it's a Binary or Logical expression, show detailed preview
+        if (initNode && (initNode.type === "BinaryExpression" || initNode.type === "LogicalExpression")) {
+          const exprPreview = this.getExpressionPreview(initNode, value);
+          descriptionText = `Declared '${varName}' = ${exprPreview}`;
+        } else {
+          descriptionText = `Declared '${varName}' = ${this.formatValue(value)}`;
+        }
+
+        // console.log(`descriptionText: ${descriptionText}`)
 
         this.addStep({
           line: node.loc ? node.loc.start.line - 1 : -1,
           lineNumber: node.loc ? node.loc.start.line : 0,
           lineContent: this.getLineContent(node),
-          variables: { ...this.getCurrentScope() },
-          description: `Declared '${varName}' = ${this.formatValue(value)}`,
-          type: 'declaration',
+          variables: this.deepClone(this.getCurrentScope()),
+          description: descriptionText,
+          type: "declaration",
           variable: varName,
           value: value,
-          consoleOutput: [...this.consoleOutput],
-          callStack: [...this.callStack]
+          consoleOutput: this.deepClone(this.consoleOutput),
+          callStack: this.deepClone(this.callStack),
         });
       }
     });
@@ -280,10 +358,10 @@ class CodeInterpreter {
 
   // Handle Assignments
   handleAssignment(node) {
-    console.log("entered handle assignment")
+    // console.log("entered handle assignment")
     // Handle member expression assignments (arr[0] = value, obj.prop = value)
     if ((node.left.type === "MemberExpression")) {
-      console.log("entered member exp")
+      // console.log("entered member exp")
       const object = this.evaluateExpression(node.left.object);
       const property = node.left.computed
         ? this.evaluateExpression(node.left.property)
@@ -307,10 +385,10 @@ class CodeInterpreter {
 
       return value;
     }
-console.log("reached here")
+    // console.log("reached here")
     // Regular variable assignment
     const varName = node.left.name;
-    console.log(`varname : ${varName}`)
+    // console.log(`varname : ${varName}`)
     const value = this.evaluateExpression(node.right);
 
     this.setVariable(varName, value);
@@ -335,6 +413,7 @@ console.log("reached here")
   // Handle function declarations
   handleFunctionDeclaration(node) {
     const funcName = node.id.name;
+    console.log(`funcName : ${funcName}`)
 
     this.functions[funcName] = node;
 
@@ -364,13 +443,15 @@ console.log("reached here")
 
   // Handle function calls
   handleFunctionCall(node) {
-    // console.log(`callee type ${node.callee.type}`);
+    console.log(`callee type ${node.callee.type}`);
+    console.log(`callee type ${node.callee.type}`);
     // Handle console.log **before** evaluating expressions
     if (
       node.callee.type === "MemberExpression" &&
       node.callee.object.name === "console" &&
       node.callee.property.name === "log"
     ) {
+      console.log("hii")
       const args = node.arguments.map((arg) => this.evaluateExpression(arg));
       const output = args.map((arg) => this.formatValue(arg)).join(" ");
       this.consoleOutput.push(output);
@@ -392,7 +473,8 @@ console.log("reached here")
 
     // Now safely handle other MemberExpressions
     if (node.callee.type === "MemberExpression") {
-      // console.log("inside memberExpression");
+
+      console.log("inside memberExpression");
       const object = this.evaluateExpression(node.callee.object);
       const methodName = node.callee.property.name;
 
@@ -412,7 +494,15 @@ console.log("reached here")
       }
     }
 
+    console.log(`funcName: ${node.callee.name}`)
     const funcName = node.callee.name;
+
+    // 🔹 First: normal function declarations (function greet() {})
+    if (this.functions[funcName]) {
+      return this.executeUserFunction(node, funcName);
+    }
+
+    console.log("calling getVariable")
     let funcValue = this.getVariable(funcName);
 
     // Check if it's an arrow function object
@@ -1124,6 +1214,7 @@ console.log("reached here")
   }
 
   // Handle if statements
+  // Handle if statements
   handleIfStatement(node) {
     const condition = this.evaluateExpression(node.test);
 
@@ -1140,10 +1231,20 @@ console.log("reached here")
       callStack: this.deepClone(this.callStack),
     });
 
+    // console.log(` condition : ${condition}`)
     if (condition) {
-      this.executeNode(node.consequent);
+      const result = this.executeNode(node.consequent);
+      // console.log(`if condition result: ${result}`)
+      // Propagate break, continue, or return signals
+      if (result === SIGNAL.BREAK || result === SIGNAL.CONTINUE || result !== undefined) {
+        return result;
+      }
     } else if (node.alternate) {
-      this.executeNode(node.alternate);
+      const result = this.executeNode(node.alternate);
+      // Propagate break, continue, or return signals
+      if (result === SIGNAL.BREAK || result === SIGNAL.CONTINUE || result !== undefined) {
+        return result;
+      }
     }
   }
 
@@ -1179,7 +1280,15 @@ console.log("reached here")
       if (!condition) break;
 
       // Execute body
-      this.executeNode(node.body);
+      const result = this.executeNode(node.body);
+
+      if (result === SIGNAL.BREAK) break;
+      if (result === SIGNAL.CONTINUE) {
+        // skip the update step? No — JS still runs update on continue
+        if (node.update) this.evaluateExpression(node.update);
+        continue;
+      }
+
 
       // Update
       if (node.update) {
@@ -1216,8 +1325,13 @@ console.log("reached here")
 
       if (!condition) break;
 
-      this.executeNode(node.body);
-      console.log("Current count value:", this.getVariable("count"));
+      const result = this.executeNode(node.body);
+
+      if (result === SIGNAL.BREAK) break;
+      if (result === SIGNAL.CONTINUE) continue;
+
+
+      // console.log("Current count value:", this.getVariable("count"));
     }
   }
 
@@ -1261,7 +1375,11 @@ console.log("reached here")
       }
 
       // Execute loop body
-      this.executeNode(node.body)
+      const result = this.executeNode(node.body);
+
+      if (result === SIGNAL.BREAK) break;
+      if (result === SIGNAL.CONTINUE) continue;
+
     }
 
     // Loop exit step
@@ -1315,7 +1433,10 @@ console.log("reached here")
         });
       }
       // Execute loop body
-      this.executeNode(node.body)
+      const result = this.executeNode(node.body);
+      if (result === SIGNAL.BREAK) break;
+      if (result === SIGNAL.CONTINUE) continue;
+
     }
     // Loop exit step
     this.addStep({
@@ -1332,7 +1453,7 @@ console.log("reached here")
 
   // Evaluate expressions
   evaluateExpression(node) {
-    // console.log(`inside evaluate expression ${node.type}`);
+    console.log(`inside evaluate expression ${node.type}`);
     if (!node) return undefined;
 
     switch (node.type) {
@@ -1340,10 +1461,16 @@ console.log("reached here")
         return node.value;
 
       case "Identifier":
-        // console.log(`inside evaluate ${node.name}`);
+        console.log(`inside evaluate ${node.name}`);
         if (node.name === "undefined") return undefined;
         if (node.name === "Infinity") return Infinity;
         if (node.name === "NaN") return NaN;
+
+        console.log(this.functions[node.name])
+        if (this.functions[node.name]) {
+          console.log("Inside")
+          return this.functions[node.name]
+        }
         return this.getVariable(node.name);
 
       case "BinaryExpression":
@@ -1352,6 +1479,15 @@ console.log("reached here")
         return this.evaluateBinaryOp(node.operator, left, right);
 
       case "UnaryExpression":
+        if (node.operator === "typeof") {
+          try {
+            const val = this.evaluateExpression(node.argument);
+            // console.log(`typeof val: ${typeof val}`)
+            return typeof val;
+          } catch (error) {
+            return "undefined";
+          }
+        }
         const arg = this.evaluateExpression(node.argument);
         return this.evaluateUnaryOp(node.operator, arg);
 
@@ -1378,7 +1514,8 @@ console.log("reached here")
 
       case "MemberExpression":
         const object = this.evaluateExpression(node.object);
-        const property = node.computer
+        // console.log(`object: ${node.computed}`)
+        const property = node.computed
           ? this.evaluateExpression(node.property)
           : node.property.name;
 
@@ -1507,6 +1644,8 @@ console.log("reached here")
         return left / right;
       case "%":
         return left % right;
+      case "**":
+        return left ** right;
       case "<":
         return left < right;
       case ">":
@@ -1541,6 +1680,10 @@ console.log("reached here")
         return +arg;
       case "!":
         return !arg;
+      case "typeof":
+        if (arg === undefined) return "undefined";
+        if (arg === null) return "object";
+        return typeof arg;
       default:
         return undefined;
     }
@@ -1561,12 +1704,20 @@ console.log("reached here")
   }
 
   setVariable(name, value) {
-console.log(`name : ${name}, value : ${value}`)
+
+    // Look for inner to outer
+    for (let i = this.scopes.length - 1; i >= 0; i--) {
+      if (Object.prototype.hasOwnProperty.call(this.scopes[i], name)) {
+        this.scopes[i][name] = value;
+        return;
+      }
+    }
+    // console.log(`name : ${name}, value : ${value}`)
     this.scopes[this.scopes.length - 1][name] = value;
-    console.log(
-      `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
-        value)}`
-    );
+    // console.log(
+    //   `inside setVariable ${(this.scopes[this.scopes.length - 1][name] =
+    //     value)}`
+    // );
   }
 
   /**
