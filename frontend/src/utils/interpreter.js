@@ -1,5 +1,4 @@
 import * as acorn from "acorn";
-import * as walk from "acorn-walk";
 
 const SIGNAL = {
   BREAK: Symbol("break"),
@@ -305,7 +304,7 @@ class CodeInterpreter {
           const varName = prop.value.name || key;
           const value = init[key];
           this.declareVariable(varName, value, node.kind)
-;
+            ;
 
           this.addStep({
             line: node.loc ? node.loc.start.line - 1 : -1,
@@ -327,7 +326,7 @@ class CodeInterpreter {
         const value = init;
 
         this.declareVariable(varName, value, node.kind)
-;
+          ;
 
         let descriptionText
 
@@ -479,7 +478,7 @@ class CodeInterpreter {
 
       const methodName = node.callee.property.name;
 
-      // 1️⃣ STATIC OBJECT METHODS (Object.keys, Object.values, etc.)
+      // STATIC OBJECT METHODS (Object.keys, Object.values, etc.)
       if (node.callee.object.type === "Identifier" &&
         node.callee.object.name === "Object") {
 
@@ -488,20 +487,20 @@ class CodeInterpreter {
         return this.handleObjectMethod(node, args[0], methodName);
       }
 
-      // 2️⃣ THEN evaluate object safely
+      // THEN evaluate object safely
       const object = this.evaluateExpression(node.callee.object);
 
-      // 3️⃣ Array methods
+      // Array methods
       if (Array.isArray(object)) {
         return this.handleArrayMethod(node, object, methodName);
       }
 
-      // 4️⃣ String methods
+      // String methods
       if (typeof object === "string") {
         return this.handleStringMethod(node, object, methodName);
       }
 
-      // 5️⃣ Instance object methods
+      // Instance object methods
       if (typeof object === "object" && object !== null) {
         return this.handleObjectMethod(node, object, methodName);
       }
@@ -522,13 +521,14 @@ class CodeInterpreter {
     // Check if it's an arrow function object
     if (funcValue && funcValue.type === "arrow-function") {
       // Create a new local scope for this function
-      this.scopes.push({});
+      // this.scopes.push({});
+      this.pushScope()
 
       // Evaluate arguments and assign them to params
       node.arguments.forEach((argNode, i) => {
         const paramName = funcValue.params[i].name;
         const argValue = this.evaluateExpression(argNode);
-        this.setVariable(paramName, argValue);
+        this.declareVariable(paramName, argValue);
       });
 
       // Execute function body and store the result
@@ -541,7 +541,8 @@ class CodeInterpreter {
       }
 
       // Pop the local scope after function execution
-      this.scopes.pop();
+      // this.scopes.pop();
+      this.popScope()
 
       return result;
     }
@@ -1591,7 +1592,7 @@ class CodeInterpreter {
         const varName = element.name;
         const value = values[index];
         this.declareVariable(varName, value, node.kind)
-;
+          ;
       }
     });
   }
@@ -1605,7 +1606,7 @@ class CodeInterpreter {
       const varName = prop.value.name || key;
       const value = object[key];
       this.declareVariable(varName, value, node.kind)
-;
+        ;
     });
   }
 
@@ -1717,12 +1718,27 @@ class CodeInterpreter {
 
   getCurrentScope() {
     // Merge all scopes for visualization
-    return this.scopes.reduce((acc, scope) => ({ ...acc, ...scope }), {});
+    // return this.scopes.reduce((acc, scope) => ({ ...acc, ...scope }), {});
+    // Merge all scopes, but expose only .value for each variable
+    return this.scopes.reduce((acc, scope) => {
+      Object.keys(scope).forEach(name => {
+        const entry = scope[name];
+
+        // If it’s a { value, kind } entry, show only the value
+        if (entry && typeof entry === "object" && "value" in entry) {
+          acc[name] = entry.value;
+        } else {
+          // fallback (in case something was stored directly)
+          acc[name] = entry;
+        }
+      });
+      return acc;
+    }, {});
   }
 
   declareVariable(name, value, kind) {
-    this.scopes[this.scopes.length - 1][name] = { 
-      value, 
+    this.scopes[this.scopes.length - 1][name] = {
+      value,
       kind // "let", "const", "var"
     };
   }
@@ -1734,13 +1750,13 @@ class CodeInterpreter {
       if (Object.prototype.hasOwnProperty.call(this.scopes[i], name)) {
         const entry = this.scopes[i][name];
         // ❌ const reassignment
-      if (entry.kind === "const") {
-        throw new Error(`Assignment to constant variable '${name}'`);
-      }
+        if (entry.kind === "const") {
+          throw new Error(`Assignment to constant variable '${name}'`);
+        }
 
-      // Update
-      entry.value = value;
-      return;
+        // Update
+        entry.value = value;
+        return;
       }
     }
     // console.log(`name : ${name}, value : ${value}`)
@@ -1750,8 +1766,8 @@ class CodeInterpreter {
     //     value)}`
     // );
 
-     // If no variable exists → JS would throw ReferenceError
-  throw new Error(`Variable '${name}' is not defined`);
+    // If no variable exists → JS would throw ReferenceError
+    throw new Error(`Variable '${name}' is not defined`);
   }
 
   /**

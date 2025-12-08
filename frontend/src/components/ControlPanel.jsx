@@ -1,100 +1,121 @@
 import React from 'react';
-import { SkipBack, SkipForward, Play, RotateCcw, Pause } from 'lucide-react';
+import { SkipBack, SkipForward, Play, RotateCcw, Pause, SkipForwardIcon } from 'lucide-react';
 
-/**
- * ControlPanel Component
- * Contains buttons to control code execution
- */
 const ControlPanel = ({
   onPrevious,
   onNext,
   onRun,
   onReset,
+  onJumpToEnd,
   isRunning,
   canGoPrevious,
   canGoNext,
   currentStep,
-  totalSteps
+  totalSteps,
+  isDarkMode
 }) => {
   return (
-    <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-4">
-      {/* Step Counter */}
-      <div className="mb-4 text-center">
-        <div className="text-sm text-slate-400 mb-1">Execution Step</div>
-        <div className="text-2xl font-bold text-white">
-          {currentStep} / {totalSteps}
+    <footer className={`px-8 py-4 border-t ${
+      isDarkMode
+        ? 'bg-slate-800 border-slate-700'
+        : 'bg-white border-slate-200'
+    }`}>
+      <div className="flex items-center gap-6">
+        {/* Playback Controls */}
+        <div className="flex gap-2">
+          <button
+            onClick={onPrevious}
+            disabled={!canGoPrevious || isRunning}
+            className={`p-2 rounded transition-colors ${
+              isDarkMode
+                ? 'hover:bg-slate-700 text-slate-300 hover:text-slate-100 disabled:text-slate-600'
+                : 'hover:bg-slate-100 text-slate-600 hover:text-slate-800 disabled:text-slate-300'
+            } disabled:cursor-not-allowed disabled:hover:bg-transparent`}
+            title="Go to previous step"
+          >
+            <SkipBack className="w-5 h-5" />
+          </button>
+          
+          <button
+            onClick={onRun}
+            disabled={isRunning && currentStep >= totalSteps}
+            className="p-3 bg-green-500 hover:bg-green-600 text-slate-900 rounded 
+              disabled:bg-slate-300 disabled:cursor-not-allowed
+              transition-colors"
+            title={isRunning ? "Running..." : "Auto-run through all steps"}
+          >
+            {isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          </button>
+          
+          <button
+            onClick={onNext}
+            disabled={!canGoNext || isRunning}
+            className={`p-2 rounded transition-colors ${
+              isDarkMode
+                ? 'hover:bg-slate-700 text-slate-300 hover:text-100 disabled:text-slate-600'
+                : 'hover:bg-slate-100 text-slate-600 hover:text-slate-800 disabled:text-slate-300'
+            } disabled:cursor-not-allowed disabled:hover:bg-transparent`}
+            title="Go to next step"
+          >
+            <SkipForward className="w-5 h-5" />
+          </button>
         </div>
-      </div>
 
-      {/* Control Buttons */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Previous Button */}
-        <button
-          onClick={onPrevious}
-          disabled={!canGoPrevious || isRunning}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 
-            disabled:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50
-            text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200
-            transform hover:scale-105 active:scale-95"
-          title="Go to previous step"
-        >
-          <SkipBack size={20} />
-          <span>Previous</span>
-        </button>
+        {/* Progress Bar */}
+        <div className="flex-1">
+          <div className={`flex items-center justify-between mb-1 text-xs ${
+            isDarkMode ? 'text-slate-300' : 'text-slate-600'
+          }`}>
+            <span className="font-semibold">Step {currentStep} of {totalSteps}</span>
+            {isRunning && (
+              <span className={`flex items-center gap-1 ${
+                isDarkMode ? 'text-slate-400' : 'text-slate-500'
+              }`}>
+                <span className="animate-pulse">●</span> Executing...
+              </span>
+            )}
+          </div>
+          <div className={`h-1.5 rounded-full overflow-hidden ${
+            isDarkMode ? 'bg-slate-700' : 'bg-slate-200'
+          }`}>
+            <div 
+              className="bg-green-500 h-full transition-all duration-300"
+              style={{ width: `${totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
 
-        {/* Next Button */}
+        {/* Jump to End Button */}
         <button
-          onClick={onNext}
-          disabled={!canGoNext || isRunning}
-          className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 
-            disabled:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50
-            text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200
-            transform hover:scale-105 active:scale-95"
-          title="Go to next step"
-        >
-          <span>Next</span>
-          <SkipForward size={20} />
-        </button>
-
-        {/* Run Button */}
-        <button
-          onClick={onRun}
+          onClick={onJumpToEnd}
           disabled={isRunning}
-          className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 
-            disabled:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50
-            text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200
-            transform hover:scale-105 active:scale-95"
-          title="Auto-run through all steps"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+            isDarkMode
+              ? 'bg-slate-600 hover:bg-slate-500 text-white disabled:bg-slate-700'
+              : 'bg-slate-700 hover:bg-slate-800 text-white disabled:bg-slate-300'
+          } disabled:cursor-not-allowed disabled:text-slate-500`}
+          title="Jump to final output"
         >
-          {isRunning ? <Pause size={20} /> : <Play size={20} />}
-          <span>{isRunning ? 'Running...' : 'Run'}</span>
+          <SkipForwardIcon className="w-4 h-4" />
+          Jump to End
         </button>
 
         {/* Reset Button */}
         <button
           onClick={onReset}
           disabled={isRunning}
-          className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 
-            disabled:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50
-            text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200
-            transform hover:scale-105 active:scale-95"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+            isDarkMode
+              ? 'text-slate-300 hover:text-slate-100 hover:bg-slate-700 disabled:text-slate-600'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100 disabled:text-slate-300'
+          } disabled:cursor-not-allowed disabled:hover:bg-transparent`}
           title="Reset to beginning"
         >
-          <RotateCcw size={20} />
-          <span>Reset</span>
+          <RotateCcw className="w-4 h-4" />
+          Reset
         </button>
       </div>
-
-      {/* Status Indicator */}
-      <div className="mt-4 text-center">
-        {isRunning && (
-          <div className="flex items-center justify-center gap-2 text-purple-400">
-            <div className="animate-pulse">●</div>
-            <span className="text-sm">Executing...</span>
-          </div>
-        )}
-      </div>
-    </div>
+    </footer>
   );
 };
 

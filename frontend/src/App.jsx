@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Code, Moon, Sun } from 'lucide-react';
 import CodeEditor from "./components/CodeEditor";
 import ControlPanel from "./components/ControlPanel";
 import VisualizationPanel from "./components/VisualizationPanel";
@@ -16,12 +17,12 @@ function App() {
   const [currentStep, setCurrentStep] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState("");
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Ref for auto-run interval
   const runIntervalRef = useRef(null);
 
   // Create interpreter instance
-  // stores value and changes in value does not trigger re-renders
   const interpreterRef = useRef(new CodeInterpreter());
 
   // Handle code execution
@@ -67,15 +68,26 @@ function App() {
     setIsRunning(true);
   };
 
+  // Handle Jump to End
+  const handleJumpToEnd = () => {
+    if (executionSteps.length === 0) {
+      if (!executeCode()) return;
+      setTimeout(() => {
+        setCurrentStep(interpreterRef.current.steps.length - 1);
+      }, 0);
+    } else {
+      setCurrentStep(executionSteps.length - 1);
+    }
+  };
+
   useEffect(() => {
     if (!isRunning) {
       return;
     }
     if (executionSteps.length === 0) {
-      // Steps not ready yet - wait for them
       return;
     }
-    // Start play
+
     let step = 0;
     setCurrentStep(0);
 
@@ -117,124 +129,120 @@ function App() {
   const currentLine = currentStepData ? currentStepData.line : -1;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className={`h-screen flex overflow-hidden ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
+      {/* LEFT SIDEBAR */}
+      <aside className="w-64 bg-slate-900 text-white flex flex-col flex-shrink-0">
+        {/* Logo/Brand */}
+        <div className="p-6 border-b border-slate-800">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+              <Code className="w-5 h-5 text-slate-900" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">TraceMate</h1>
+              <p className="text-xs text-slate-400">Code Visualizer</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Dark Mode Toggle */}
+        <div className="p-4 border-b border-slate-800">
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors"
+          >
+            <span>Dark Mode</span>
+            {isDarkMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Examples Panel in Sidebar - Shows ALL examples */}
+        <div className="flex-1 overflow-y-auto">
+          <ExamplesPanel
+            onSelectExample={(exampleCode) => {
+              setCode(exampleCode);
+              handleReset();
+            }}
+          />
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-            Code Visualizer
-          </h1>
-          <p className="text-purple-200 text-lg">
-            Step through your code and watch variables come to life! ✨
-          </p>
-        </div>
+        <header className={`px-8 py-4 flex-shrink-0 ${
+          isDarkMode 
+            ? 'bg-slate-800 border-b border-slate-700' 
+            : 'bg-white border-b border-slate-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-lg font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                Code Editor
+              </h2>
+              <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                main.js
+              </p>
+            </div>
+            <div className="flex gap-3 items-center">
+              <div className={`flex items-center gap-2 text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                {error ? 'Error' : 'Ready'}
+              </div>
+              <button 
+                onClick={handleRun}
+                disabled={isRunning}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-slate-900 font-semibold rounded-lg text-sm transition-colors"
+              >
+                {isRunning ? 'Running...' : 'Run Code'}
+              </button>
+            </div>
+          </div>
+        </header>
 
-        {/* Error Display
+        {/* Error Display (if any) */}
         {error && (
-          <div className="mb-6 bg-red-900 border-2 border-red-500 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-red-200">
-              <span className="text-2xl">⚠️</span>
-              <div>
-                <div className="font-semibold">Execution Error</div>
-                <div className="text-sm mt-1">{error}</div>
-              </div>
-            </div>
+          <div className="px-8 pt-4">
+            <ErrorDisplay error={error} onDismiss={() => setError('')} isDarkMode={isDarkMode} />
           </div>
-        )} */}
+        )}
 
-        <ErrorDisplay error={error} onDismiss={() => setError('')} />
+        {/* Main Grid: Code Editor + Visualization */}
+        <div className="flex-1 grid grid-cols-2 overflow-hidden min-h-0">
+          {/* Code Editor Section */}
+          <CodeEditor
+            code={code}
+            onChange={setCode}
+            currentLine={currentLine}
+            disabled={isRunning}
+            isDarkMode={isDarkMode}
+          />
 
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Code Editor (takes 2 columns on large screens) */}
-          <div className="lg:col-span-2 space-y-6">
-            <CodeEditor
-              code={code}
-              onChange={setCode}
-              currentLine={currentLine}
-              disabled={isRunning}
-            />
-
-            <ControlPanel
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onRun={handleRun}
-              onReset={handleReset}
-              isRunning={isRunning}
-              canGoPrevious={currentStep > 0}
-              canGoNext={currentStep < executionSteps.length - 1}
-              currentStep={currentStep}
-              totalSteps={
-                executionSteps.length > 0 ? executionSteps.length - 1 : 0
-              }
-            />
-          </div>
-
-          {/* Right Column - Visualization */}
-          <div className="lg:col-span-1">
-            <VisualizationPanel
-              currentStep={currentStep}
-              stepData={currentStepData}
-            />
-          </div>
+          {/* Visualization Section */}
+          <VisualizationPanel
+            currentStep={currentStep}
+            stepData={currentStepData}
+            isDarkMode={isDarkMode}
+          />
         </div>
-        
-        <ExamplesPanel
-          onSelectExample={(exampleCode) => {
-            setCode(exampleCode);
-            handleReset();
-          }}
+
+        {/* Control Panel Footer */}
+        <ControlPanel
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          onRun={handleRun}
+          onReset={handleReset}
+          onJumpToEnd={handleJumpToEnd}
+          isRunning={isRunning}
+          canGoPrevious={currentStep > 0}
+          canGoNext={currentStep < executionSteps.length - 1}
+          currentStep={currentStep}
+          totalSteps={executionSteps.length > 0 ? executionSteps.length - 1 : 0}
+          isDarkMode={isDarkMode}
         />
-        {/* Instructions Footer */}
-        <div className="mt-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-6">
-          <h3 className="text-xl font-semibold text-white mb-4">
-            How to Use 📚
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-300">
-            <div className="flex gap-3">
-              <span className="text-2xl">1️⃣</span>
-              <div>
-                <div className="font-semibold text-purple-300">Write Code</div>
-                <div className="text-sm">
-                  Type JavaScript code in the editor (supports let, const, var)
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="text-2xl">2️⃣</span>
-              <div>
-                <div className="font-semibold text-purple-300">
-                  Step Through
-                </div>
-                <div className="text-sm">
-                  Use Next/Previous to navigate line by line
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="text-2xl">3️⃣</span>
-              <div>
-                <div className="font-semibold text-purple-300">Auto Run</div>
-                <div className="text-sm">
-                  Click Run to automatically execute all steps
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="text-2xl">4️⃣</span>
-              <div>
-                <div className="font-semibold text-purple-300">
-                  Watch Variables
-                </div>
-                <div className="text-sm">
-                  See variables update in real-time on the right panel
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
+
 export default App;

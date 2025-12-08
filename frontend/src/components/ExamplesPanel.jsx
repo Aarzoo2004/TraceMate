@@ -54,17 +54,17 @@ const EXAMPLES = [
 
 const ExamplesPanel = ({ onSelectExample }) => {
   return (
-    <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-4">
-      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-        <Code2 size={20} />
-        Code Examples
+    <div className="p-4 border-t border-slate-800">
+      <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
+        <Code2 size={14} />
+        Quick Examples
       </h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+      <div className="space-y-2">
         {EXAMPLES.map((example, idx) => (
           <button
             key={idx}
             onClick={() => onSelectExample(example.code)}
-            className="bg-slate-700 hover:bg-purple-600 text-white text-sm py-2 px-3 rounded transition-all duration-200 transform hover:scale-105"
+            className="w-full text-left px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-xs transition-colors"
           >
             {example.title}
           </button>
