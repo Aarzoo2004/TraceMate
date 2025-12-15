@@ -14,6 +14,8 @@ class CodeInterpreter {
     this.functions = {};
     this.consoleOutput = [];
     this.callStack = [];
+    this.currentThis = null;
+
   }
 
   /**
@@ -70,7 +72,10 @@ class CodeInterpreter {
         lineNumber: code.split("\n").length + 1,
         lineContent: "Program End",
         // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: "Program execution complete",
         type: "end",
         consoleOutput: this.deepClone(this.consoleOutput),
@@ -87,7 +92,10 @@ class CodeInterpreter {
         lineNumber: 0,
         lineContent: "Error",
         // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: `Runtime Error: ${error.message}`,
         type: "error",
         error: error.message,
@@ -211,7 +219,9 @@ class CodeInterpreter {
   //       lineNumber: node.loc ? node.loc.start.line : 0,
   //       lineContent: this.getLineContent(node),
   //       // variables: { ...this.getCurrentScope() },
-  //       variables: this.deepClone(this.getCurrentScope()),
+  //       variables: this.sanitizeForDisplay(
+  //   this.deepClone(this.getCurrentScope())
+  // ),
   //       description: `Declared '${varName}' = ${this.formatValue(value)}`,
   //       type: "declaration",
   //       variable: varName,
@@ -345,7 +355,10 @@ class CodeInterpreter {
           line: node.loc ? node.loc.start.line - 1 : -1,
           lineNumber: node.loc ? node.loc.start.line : 0,
           lineContent: this.getLineContent(node),
-          variables: this.deepClone(this.getCurrentScope()),
+          variables: this.sanitizeForDisplay(
+            this.deepClone(this.getCurrentScope())
+          )
+          ,
           description: descriptionText,
           type: "declaration",
           variable: varName,
@@ -359,26 +372,85 @@ class CodeInterpreter {
 
   // Handle Assignments
   handleAssignment(node) {
-    // console.log("entered handle assignment")
-    // Handle member expression assignments (arr[0] = value, obj.prop = value)
-    if ((node.left.type === "MemberExpression")) {
-      // console.log("entered member exp")
+    const operator = node.operator;
+
+    // ✅ 1️⃣ COMPOUND ASSIGNMENTS FIRST
+    if (operator !== "=") {
+      const baseOperator = operator.slice(0, -1); // "+=" → "+"
+
+      let currentValue;
+      let target;
+
+      // x += 5
+      if (node.left.type === "Identifier") {
+        const name = node.left.name;
+        currentValue = this.getVariable(name);
+        target = { type: "variable", name };
+      }
+
+      // obj.a += 5 OR arr[0] += 5
+      else if (node.left.type === "MemberExpression") {
+        const object = this.evaluateExpression(node.left.object);
+        const property = node.left.computed
+          ? this.evaluateExpression(node.left.property)
+          : node.left.property.name;
+
+        currentValue = object[property];
+        target = { type: "member", object, property };
+      }
+
+      else {
+        throw new Error("Invalid assignment target");
+      }
+
+      const rightValue = this.evaluateExpression(node.right);
+      const newValue = this.evaluateBinaryOp(
+        baseOperator,
+        currentValue,
+        rightValue
+      );
+
+      // Apply assignment
+      if (target.type === "variable") {
+        this.setVariable(target.name, newValue);
+      } else {
+        target.object[target.property] = newValue;
+      }
+
+      this.addStep({
+        line: node.loc ? node.loc.start.line - 1 : -1,
+        lineNumber: node.loc ? node.loc.start.line : 0,
+        lineContent: this.getLineContent(node),
+        variables: this.deepClone(this.getCurrentScope()),
+        description: `Updated '${this.nodeToCode(node.left)}' ${operator} ${this.formatValue(
+          rightValue
+        )} → ${this.formatValue(newValue)}`,
+        type: "assignment",
+        consoleOutput: this.deepClone(this.consoleOutput),
+        callStack: this.deepClone(this.callStack),
+      });
+
+      return newValue;
+    }
+
+    // ✅ 2️⃣ NORMAL ASSIGNMENT (=)
+
+    // obj.a = value
+    if (node.left.type === "MemberExpression") {
       const object = this.evaluateExpression(node.left.object);
       const property = node.left.computed
         ? this.evaluateExpression(node.left.property)
         : node.left.property.name;
-      const value = this.evaluateExpression(node.right);
 
+      const value = this.evaluateExpression(node.right);
       object[property] = value;
 
       this.addStep({
         line: node.loc ? node.loc.start.line - 1 : -1,
         lineNumber: node.loc ? node.loc.start.line : 0,
         lineContent: this.getLineContent(node),
-        // variables: { ...this.getCurrentScope() },
         variables: this.deepClone(this.getCurrentScope()),
-        description: `Set ${node.left.object.name
-          }[${property}] = ${this.formatValue(value)}`,
+        description: `Set ${this.nodeToCode(node.left)} = ${this.formatValue(value)}`,
         type: "assignment",
         consoleOutput: this.deepClone(this.consoleOutput),
         callStack: this.deepClone(this.callStack),
@@ -386,30 +458,26 @@ class CodeInterpreter {
 
       return value;
     }
-    // console.log("reached here")
-    // Regular variable assignment
-    const varName = node.left.name;
-    // console.log(`varname : ${varName}`)
-    const value = this.evaluateExpression(node.right);
 
-    this.setVariable(varName, value);
+    // x = value
+    const name = node.left.name;
+    const value = this.evaluateExpression(node.right);
+    this.setVariable(name, value);
 
     this.addStep({
       line: node.loc ? node.loc.start.line - 1 : -1,
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
-      // variables: { ...this.getCurrentScope() },
       variables: this.deepClone(this.getCurrentScope()),
-      description: `Updated '${varName}' = ${this.formatValue(value)}`,
+      description: `Updated '${name}' = ${this.formatValue(value)}`,
       type: "assignment",
-      variable: varName,
-      value: value,
       consoleOutput: this.deepClone(this.consoleOutput),
       callStack: this.deepClone(this.callStack),
     });
 
     return value;
   }
+
 
   // Handle function declarations
   handleFunctionDeclaration(node) {
@@ -423,7 +491,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `Declared function '${funcName}'`,
       type: "function-declaration",
       functionName: funcName,
@@ -462,7 +533,10 @@ class CodeInterpreter {
         lineNumber: node.loc ? node.loc.start.line : 0,
         lineContent: this.getLineContent(node),
         // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: `Console: ${output}`,
         type: "console",
         output: output,
@@ -500,11 +574,35 @@ class CodeInterpreter {
         return this.handleStringMethod(node, object, methodName);
       }
 
+      // 2️⃣ d) 🔥 USER-DEFINED OBJECT METHOD (this binding)
+      if (
+        typeof object === "object" &&
+        object !== null &&
+        object[methodName] &&
+        (
+          object[methodName].type === "arrow-function" ||
+          object[methodName].type === "function"
+        )
+      ) {
+        return this.executeObjectMethod(
+          object,
+          methodName,
+          node.arguments,
+          node
+        );
+      }
       // Instance object methods
-      if (typeof object === "object" && object !== null) {
+      if (
+        typeof object === "object" &&
+        object !== null &&
+        this.isBuiltInObjectMethod(methodName)
+      ) {
         return this.handleObjectMethod(node, object, methodName);
       }
+
     }
+
+
 
 
     console.log(`funcName: ${node.callee.name}`)
@@ -546,13 +644,13 @@ class CodeInterpreter {
 
       return result;
     }
-
-    // For normal user-defined (non-arrow) functions
-    if (this.functions[funcName]) {
-      return this.executeUserFunction(node, funcName);
-    }
     throw new Error("Unsupported function call type");
   }
+
+  isBuiltInObjectMethod(name) {
+    return ["keys", "values", "entries", "assign", "freeze"].includes(name);
+  }
+
 
   // Handle user-defined functions
   executeUserFunction(node, funcName) {
@@ -566,7 +664,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `Calling function '${funcName}(${args
         .map((a) => this.formatValue(a))
         .join(", ")})'`,
@@ -597,7 +698,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `Function '${funcName}' returned ${this.formatValue(
         result
       )}`,
@@ -610,6 +714,40 @@ class CodeInterpreter {
 
     return result;
   }
+  executeObjectMethod(object, methodName, argNodes) {
+    const fn = object[methodName];
+
+    if (!fn || !fn.params) {
+      throw new Error(`'${methodName}' is not callable`);
+    }
+
+    const prevThis = this.currentThis;
+    this.currentThis = object;
+
+    this.pushScope();
+
+    fn.params.forEach((param, i) => {
+      const argValue = argNodes[i]
+        ? this.evaluateExpression(argNodes[i])
+        : undefined;
+      this.declareVariable(param.name, argValue, "let");
+    });
+
+    let result;
+    if (fn.type === "arrow-function" && fn.isExpression) {
+      result = this.evaluateExpression(fn.body);
+    } else {
+      result = this.executeNode(fn.body);
+    }
+
+    this.popScope();
+    this.currentThis = prevThis;
+
+    return result;
+  }
+
+
+
 
   // FIXED: Helper to create callback preview
   getCallbackPreview(callback) {
@@ -803,7 +941,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: description,
       type: "array-method",
       method: methodName,
@@ -838,7 +979,10 @@ class CodeInterpreter {
       line: node && node.loc ? node.loc.start.line - 1 : -1,
       lineNumber: node && node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `${methodName}() starting on ${previewDesc}`,
       type: "array-iterator-start",
       method: methodName,
@@ -869,7 +1013,10 @@ class CodeInterpreter {
               line: node && node.loc ? node.loc.start.line - 1 : -1,
               lineNumber: node && node.loc ? node.loc.start.line : 0,
               lineContent: this.getLineContent(node),
-              variables: this.deepClone(this.getCurrentScope()),
+              variables: this.sanitizeForDisplay(
+                this.deepClone(this.getCurrentScope())
+              )
+              ,
               description: `${methodName}() found at index ${i}: ${this.formatValue(
                 element
               )}`,
@@ -904,7 +1051,10 @@ class CodeInterpreter {
           line: node && node.loc ? node.loc.start.line - 1 : -1,
           lineNumber: node && node.loc ? node.loc.start.line : 0,
           lineContent: this.getLineContent(node),
-          variables: this.deepClone(this.getCurrentScope()),
+          variables: this.sanitizeForDisplay(
+            this.deepClone(this.getCurrentScope())
+          )
+          ,
           description: `${methodName}[${i}]: ${inputVal} → ${cbPreview} → ${outputVal}`,
           type: "array-iterator",
           index: i,
@@ -923,7 +1073,10 @@ class CodeInterpreter {
         line: node && node.loc ? node.loc.start.line - 1 : -1,
         lineNumber: node && node.loc ? node.loc.start.line : 0,
         lineContent: this.getLineContent(node),
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: `${methodName}() completed`,
         type: "array-iterator-end",
         consoleOutput: this.deepClone(this.consoleOutput),
@@ -937,7 +1090,10 @@ class CodeInterpreter {
       line: node && node.loc ? node.loc.start.line - 1 : -1,
       lineNumber: node && node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `${methodName}() result → ${this.formatValue(results)}`,
       type: "array-iterator-end",
       consoleOutput: this.deepClone(this.consoleOutput),
@@ -972,7 +1128,10 @@ class CodeInterpreter {
       line: node && node.loc ? node.loc.start.line - 1 : -1,
       lineNumber: node && node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `reduce() starting with accumulator = ${this.formatValue(
         accumulator
       )}, array = ${previewDesc}`,
@@ -1004,7 +1163,10 @@ class CodeInterpreter {
           line: node && node.loc ? node.loc.start.line - 1 : -1,
           lineNumber: node && node.loc ? node.loc.start.line : 0,
           lineContent: this.getLineContent(node),
-          variables: this.deepClone(this.getCurrentScope()),
+          variables: this.sanitizeForDisplay(
+            this.deepClone(this.getCurrentScope())
+          )
+          ,
           description: `reduce[${i}]: acc=${this.formatValue(
             prevAccumulator
           )}, cur=${this.formatValue(current)} → ${cbPreview} → result=${this.formatValue(
@@ -1023,7 +1185,10 @@ class CodeInterpreter {
       line: node && node.loc ? node.loc.start.line - 1 : -1,
       lineNumber: node && node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `reduce() → final result = ${this.formatValue(accumulator)}`,
       type: "array-reduce-end",
       method: "reduce",
@@ -1157,7 +1322,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: description,
       type: "string-method",
       method: methodName,
@@ -1225,7 +1393,10 @@ class CodeInterpreter {
       return result;
     }
 
-    throw new Error(`Object method '${methodName}' is not yet supported`);
+    throw new Error(
+      `Method '${methodName}' is not supported on this object`
+    );
+
   }
 
   // Handle if statements
@@ -1238,7 +1409,10 @@ class CodeInterpreter {
       lineNumber: node.loc ? node.loc.start.line : 0,
       lineContent: this.getLineContent(node),
       // variables: { ...this.getCurrentScope() },
-      variables: this.deepClone(this.getCurrentScope()),
+      variables: this.sanitizeForDisplay(
+        this.deepClone(this.getCurrentScope())
+      )
+      ,
       description: `If condition is ${condition ? "TRUE" : "FALSE"}`,
       type: "condition",
       condition: condition,
@@ -1284,7 +1458,10 @@ class CodeInterpreter {
         lineNumber: node.loc ? node.loc.start.line : 0,
         lineContent: this.getLineContent(node),
         // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: `Loop condition: ${condition ? "continue" : "exit"}`,
         type: "loop",
         condition: condition,
@@ -1330,7 +1507,10 @@ class CodeInterpreter {
         lineNumber: node.loc ? node.loc.start.line : 0,
         lineContent: this.getLineContent(node),
         // variables: { ...this.getCurrentScope() },
-        variables: this.deepClone(this.getCurrentScope()),
+        variables: this.sanitizeForDisplay(
+          this.deepClone(this.getCurrentScope())
+        )
+        ,
         description: `While condition: ${condition ? "continue" : "exit"}`,
         type: "loop",
         condition: condition,
@@ -1577,6 +1757,22 @@ class CodeInterpreter {
         // Object destructuring
         return this.handleObjectDestructuring(node);
 
+      case "ThisExpression":
+        return this.currentThis;
+
+      case "FunctionExpression":
+        return {
+          type: "function",
+          name: node.id ? node.id.name : null,
+          params: node.params,
+          body: node.body,
+          isExpression: false
+        };
+
+      case "AssignmentExpression":
+        return this.handleAssignment(node);
+
+
       default:
         return undefined;
     }
@@ -1640,14 +1836,43 @@ class CodeInterpreter {
 
   // Handle update expressions (++, --)
   handleUpdateExpression(node) {
-    // console.log("inside handleupdate");
-    const varName = node.argument.name;
-    const currentValue = this.getVariable(varName);
-    const newValue =
-      node.operator === "++" ? currentValue + 1 : currentValue - 1;
-    this.setVariable(varName, newValue);
-    return node.prefix ? newValue : currentValue;
+    const isPrefix = node.prefix;
+    const operator = node.operator;
+
+    // 🔹 Variable case: x++, ++x
+    if (node.argument.type === "Identifier") {
+      const varName = node.argument.name;
+      const currentValue = this.getVariable(varName);
+
+      const updatedValue =
+        operator === "++" ? currentValue + 1 : currentValue - 1;
+
+      this.setVariable(varName, updatedValue);
+
+      // Prefix returns new value, postfix returns old value
+      return isPrefix ? updatedValue : currentValue;
+    }
+
+    // 🔹 MemberExpression case: obj.a++, arr[0]++
+    if (node.argument.type === "MemberExpression") {
+      const object = this.evaluateExpression(node.argument.object);
+      const property = node.argument.computed
+        ? this.evaluateExpression(node.argument.property)
+        : node.argument.property.name;
+
+      const currentValue = object[property];
+
+      const updatedValue =
+        operator === "++" ? currentValue + 1 : currentValue - 1;
+
+      object[property] = updatedValue;
+
+      return isPrefix ? updatedValue : currentValue;
+    }
+
+    throw new Error("Invalid update expression");
   }
+
 
   // Evaluate binary operations
   evaluateBinaryOp(operator, left, right) {
@@ -1775,15 +2000,21 @@ class CodeInterpreter {
    * @returns {Object} - Current variable state
    */
   getVariable(name) {
+    // 🔥 Handle JS built-ins
+    if (name === "undefined") return undefined;
+    if (name === "NaN") return NaN;
+    if (name === "Infinity") return Infinity;
+
     // Look through scopes from innermost to outermost
-    console.log(`inside get variable ${name}`);
     for (let i = this.scopes.length - 1; i >= 0; i--) {
-      if (this.scopes[i].hasOwnProperty(name)) {
+      if (Object.prototype.hasOwnProperty.call(this.scopes[i], name)) {
         return this.scopes[i][name].value;
       }
     }
+
     throw new Error(`Variable '${name}' is not defined`);
   }
+
 
   deepClone(obj) {
     if (typeof structuredClone === "function") {
@@ -1842,36 +2073,77 @@ class CodeInterpreter {
    */
   formatValue(value) {
     if (typeof value === "string") return `"${value}"`;
+
     if (Array.isArray(value)) {
       if (value.length > 10) {
-        return `[${value.map((v) => this.formatValue(v)).join(", ")}, ... +${value.length - 10
-          } more]`;
+        return `[${value.map(v => this.formatValue(v)).join(", ")}, ... +${value.length - 10} more]`;
       }
-      return `[${value.map((v) => this.formatValue(v)).join(", ")}]`;
+      return `[${value.map(v => this.formatValue(v)).join(", ")}]`;
     }
 
     if (typeof value === "object" && value !== null) {
+
+      // Normal function
+      if (value.type === "function") {
+        const params = value.params.map(p => p.name).join(", ");
+        return `function(${params}) { ... }`;
+      }
+
+      // Arrow function
       if (
         value.type === "arrow-function" ||
         value.type === "ArrowFunctionExpression"
       ) {
-        const params = value.params.map((p) => p.name).join(", ");
-        return `(${params}) => {...}`;
+        const params = value.params.map(p => p.name).join(", ");
+        return `(${params}) => { ... }`;
       }
-      const entries = Object.entries(value);
-      if (entries.length > 3) {
-        return `{${entries
-          .slice(0, 3)
-          .map(([k, v]) => `${k}: ${this.formatValue(v)}`)
-          .join(", ")},...}`;
-      }
-      return JSON.stringify(value);
+
+      // 🔹 Object pretty-print (hide function internals)
+      const entries = Object.entries(value).map(([k, v]) => {
+        if (v && (v.type === "function" || v.type === "arrow-function")) {
+          return `${k}: ƒ`;
+        }
+        return `${k}: ${this.formatValue(v)}`;
+      });
+
+      return `{ ${entries.join(", ")} }`; // ✅ MISSING RETURN FIXED
     }
+
     if (value === undefined) return "undefined";
     if (value === null) return "null";
     if (typeof value === "function") return "(function)";
     return String(value);
   }
+
+  sanitizeForDisplay(value) {
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return value;
+    if (value === null || value === undefined) return value;
+
+    if (Array.isArray(value)) {
+      return value.map(v => this.sanitizeForDisplay(v));
+    }
+
+    if (typeof value === "object") {
+      // Hide function internals
+      if (value.type === "function" || value.type === "arrow-function") {
+        return "ƒ";
+      }
+
+      const obj = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (v && (v.type === "function" || v.type === "arrow-function")) {
+          obj[k] = "ƒ";
+        } else {
+          obj[k] = this.sanitizeForDisplay(v);
+        }
+      }
+      return obj;
+    }
+
+    return value;
+  }
+
 }
 
 export default CodeInterpreter;
